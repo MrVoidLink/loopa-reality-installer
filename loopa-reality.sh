@@ -16,8 +16,6 @@ read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
 read -p "🕵️ Enter camouflage SNI (e.g. www.microsoft.com): " CAMO
 read -p "🏷 Enter tag name (default: reality-$PORT): " TAG
 TAG=${TAG:-reality-$PORT}
-read -p "🔒 Max concurrent connections (default: 1): " MAX_CONN
-MAX_CONN=${MAX_CONN:-1}
 
 # ---------- 🧹 Sanitize domain & SNI ----------
 clean_input() {
@@ -51,7 +49,6 @@ echo "Port: $PORT"
 echo "Domain: $DOMAIN"
 echo "SNI: $CAMO"
 echo "Tag: $TAG"
-echo "Max Connections: $MAX_CONN"
 echo "----------------------------------------------"
 read -p "⚙️ Continue? (y/n): " CONFIRM
 [ "$CONFIRM" != "y" ] && echo "Cancelled." && exit 0
@@ -106,14 +103,12 @@ chown root:root "$PRIVFILE"
 # ---------- Step 6: Build inbound ----------
 INBOUND=$(jq -n \
   --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" \
-  --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" \
-  --argjson maxconn "$MAX_CONN" '
+  --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" '
   {
     port: ($port|tonumber),
     protocol: "vless",
     tag: $tag,
     settings: { clients: [{ id: $id }], decryption: "none" },
-    allocate: { strategy: "always", concurrency: $maxconn },
     streamSettings: {
       network: "tcp",
       security: "reality",
@@ -155,10 +150,21 @@ UUID: $UUID
 PublicKey: $PUB
 PrivateKeyFile: $PRIVFILE
 ShortId: $SHORTID
-Max Connections: $MAX_CONN
 Reality Link: $LINK
 EOF
 
 echo ""
 echo "✅ Saved info to: ~/loopa-reality-${PORT}.txt"
+
+# ---------- Step 7: Optional IP connection limit ----------
+echo ""
+read -p "🚦 Set maximum number of simultaneous IP connections? (e.g. 50, or 0 for unlimited): " MAX_IPS
+if [[ "$MAX_IPS" =~ ^[0-9]+$ && "$MAX_IPS" -gt 0 ]]; then
+  echo "⚙️ Applying connection limit of $MAX_IPS IPs on port $PORT..."
+  iptables -A INPUT -p tcp --dport "$PORT" -m connlimit --connlimit-above "$MAX_IPS" --connlimit-mask 0 -j DROP
+  echo "✅ Limit applied: max $MAX_IPS simultaneous IPs."
+else
+  echo "ℹ️ Skipped connection limit."
+fi
+
 echo "🎉 Reality inbound created successfully!"
