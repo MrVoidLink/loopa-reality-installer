@@ -53,16 +53,6 @@ echo "----------------------------------------------"
 read -p "⚙️ Continue? (y/n): " CONFIRM
 [ "$CONFIRM" != "y" ] && echo "Cancelled." && exit 0
 
-# ---------- Step 1.5: Limit concurrent users ----------
-read -p "👥 Enter max concurrent users (e.g. 100, 0 for unlimited): " MAX_USERS
-if [[ "$MAX_USERS" =~ ^[0-9]+$ && "$MAX_USERS" -gt 0 ]]; then
-  echo "⚙️ Applying user limit: $MAX_USERS"
-  iptables -A INPUT -p tcp --dport "$PORT" -m connlimit --connlimit-above "$MAX_USERS" --connlimit-mask 0 -j DROP
-  echo "✅ Limit applied: max $MAX_USERS users can connect simultaneously."
-else
-  echo "♾️ No user limit applied."
-fi
-
 # ---------- Step 2: Ensure deps ----------
 REQUIRED=(jq qrencode openssl curl)
 for pkg in "${REQUIRED[@]}"; do
