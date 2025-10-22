@@ -53,6 +53,16 @@ echo "----------------------------------------------"
 read -p "⚙️ Continue? (y/n): " CONFIRM
 [ "$CONFIRM" != "y" ] && echo "Cancelled." && exit 0
 
+# ---------- Step 1.5: Limit concurrent users ----------
+read -p "👥 Enter max concurrent users (e.g. 100, 0 for unlimited): " MAX_USERS
+if [[ "$MAX_USERS" =~ ^[0-9]+$ && "$MAX_USERS" -gt 0 ]]; then
+  echo "⚙️ Applying user limit: $MAX_USERS"
+  iptables -A INPUT -p tcp --dport "$PORT" -m connlimit --connlimit-above "$MAX_USERS" --connlimit-mask 0 -j DROP
+  echo "✅ Limit applied: max $MAX_USERS users can connect simultaneously."
+else
+  echo "♾️ No user limit applied."
+fi
+
 # ---------- Step 2: Ensure deps ----------
 REQUIRED=(jq qrencode openssl curl)
 for pkg in "${REQUIRED[@]}"; do
@@ -155,16 +165,4 @@ EOF
 
 echo ""
 echo "✅ Saved info to: ~/loopa-reality-${PORT}.txt"
-
-# ---------- Step 7: Optional IP connection limit ----------
-echo ""
-read -p "🚦 Set maximum number of simultaneous IP connections? (e.g. 50, or 0 for unlimited): " MAX_IPS
-if [[ "$MAX_IPS" =~ ^[0-9]+$ && "$MAX_IPS" -gt 0 ]]; then
-  echo "⚙️ Applying connection limit of $MAX_IPS IPs on port $PORT..."
-  iptables -A INPUT -p tcp --dport "$PORT" -m connlimit --connlimit-above "$MAX_IPS" --connlimit-mask 0 -j DROP
-  echo "✅ Limit applied: max $MAX_IPS simultaneous IPs."
-else
-  echo "ℹ️ Skipped connection limit."
-fi
-
 echo "🎉 Reality inbound created successfully!"
