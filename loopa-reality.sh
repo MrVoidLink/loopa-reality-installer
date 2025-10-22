@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# Loopa Reality Setup Wizard (v3.6 - safe config + auto merge)
+# Loopa Reality Setup Wizard (v3.7 - stable auto merge + keypair fix)
 # Type: VLESS + TCP + REALITY 🔒
 # Author: Mr Void 💀
 
@@ -12,7 +12,7 @@ SERVICE_DROPIN="/etc/systemd/system/xray.service.d/10-donot_touch_single_conf.co
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "🌀 Welcome to Loopa Reality inbound creator (v3.6)"
+echo "🌀 Welcome to Loopa Reality inbound creator (v3.7)"
 echo "=============================================="
 read -p "🔢 Enter port number (e.g. 443): " PORT
 read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
@@ -40,9 +40,7 @@ if [ ! -s "$CONFIG" ]; then
   ]
 }
 EOF
-  if [ ! -s "$CONFIG" ]; then
-    err "❌ Failed to write $CONFIG"
-  fi
+  [ ! -s "$CONFIG" ] && err "❌ Failed to write $CONFIG"
 else
   echo "✅ Existing config.json found."
 fi
@@ -101,12 +99,22 @@ EOF
   systemctl daemon-reload
 fi
 
-# ---------- Step 4: Generate Keys ----------
+# ---------- Step 4: Generate Keys (fixed) ----------
 echo "🔐 Generating X25519 keypair..."
-XOUT=$(xray x25519 2>/dev/null || true)
+
+XRAY_BIN=$(command -v xray || echo "/usr/local/bin/xray")
+if [ ! -x "$XRAY_BIN" ]; then
+  err "❌ Xray binary not found at $XRAY_BIN"
+fi
+
+XOUT=$($XRAY_BIN x25519 2>/dev/null || true)
 PRIV=$(echo "$XOUT" | awk -F': ' '/[Pp]rivate/ {print $2; exit}' | tr -d '\r\n')
 PUB=$(echo "$XOUT" | awk -F': ' '/Public/ {print $2; exit}' | tr -d '\r\n')
-[ -z "$PRIV" ] && err "❌ Failed to read private key!"
+
+if [ -z "$PRIV" ] || [ -z "$PUB" ]; then
+  err "❌ Failed to generate X25519 keypair! Check Xray installation."
+fi
+
 SHORTID=$(openssl rand -hex 8)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
