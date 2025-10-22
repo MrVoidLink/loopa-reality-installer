@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# Loopa Reality Setup Wizard (v3.3 - multi-inbound safe)
+# Loopa Reality Setup Wizard (v3.4 - official multi-inbound)
 # Type: VLESS + TCP + REALITY 🔒
 # Author: Mr Void 💀
 
@@ -10,7 +10,7 @@ INBOUND_DIR="/usr/local/etc/xray/inbounds"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "🌀 Welcome to Loopa Reality inbound creator (v3.3)"
+echo "🌀 Welcome to Loopa Reality inbound creator (v3.4)"
 echo "=============================================="
 read -p "🔢 Enter port number (e.g. 443): " PORT
 read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
@@ -58,16 +58,15 @@ fi
 # ---------- Step 3: Base config ----------
 mkdir -p "$(dirname "$CONFIG")" "$INBOUND_DIR"
 
-if [ ! -f "$CONFIG" ]; then
+if [ ! -s "$CONFIG" ]; then
   echo "🧱 Creating base Xray config.json..."
   cat > "$CONFIG" <<'JSON'
 {
   "log": { "loglevel": "warning" },
-  "inbounds": [],
   "outbounds": [
     { "protocol": "freedom", "settings": {} }
   ],
-  "include": "/usr/local/etc/xray/inbounds/*.json"
+  "includeConfigFiles": ["/usr/local/etc/xray/inbounds/*.json"]
 }
 JSON
 fi
@@ -94,6 +93,7 @@ jq -n \
   --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" \
   --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" '
   {
+    listen: "0.0.0.0",
     port: ($port|tonumber),
     protocol: "vless",
     tag: $tag,
