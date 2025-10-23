@@ -1,23 +1,85 @@
 #!/bin/bash
 set -e
-# Loopa Reality Setup Wizard (v3.4 - fixed config builder)
+# Loopa Reality Setup Wizard (v4.0 - Manager Edition)
 # Type: VLESS + TCP + REALITY 🔒
 # Author: Mr Void 💀
 
 CONFIG="/usr/local/etc/xray/config.json"
-
+DATA_DIR="$HOME"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "🌀 Welcome to Loopa Reality inbound creator (v3.4 stable)"
-echo "=============================================="
+# ---------- 🧭 Main Menu ----------
+while true; do
+  clear
+  echo "🌀 Loopa Reality Wizard (v4.0)"
+  echo "=============================="
+  echo "1) Create new Reality inbound"
+  echo "2) Show existing configs (list + QR)"
+  echo "3) Exit"
+  read -p "Select an option [1-3]: " CHOICE
+
+  case $CHOICE in
+    1)
+      clear
+      echo "🚀 Starting inbound creation..."
+      break
+      ;;
+    2)
+      clear
+      echo "📂 Available Loopa Reality configs:"
+      FILES=($(ls $DATA_DIR/loopa-reality-*.txt 2>/dev/null || true))
+      if [ ${#FILES[@]} -eq 0 ]; then
+        echo "⚠️ No configs found yet."
+        read -p "Press Enter to return to menu..." _
+        continue
+      fi
+      i=1
+      for f in "${FILES[@]}"; do
+        echo "  $i) $(basename "$f")"
+        ((i++))
+      done
+      echo ""
+      read -p "Select a config number: " NUM
+      IDX=$((NUM-1))
+      [ -z "${FILES[$IDX]}" ] && echo "❌ Invalid choice!" && sleep 1 && continue
+
+      FILE="${FILES[$IDX]}"
+      clear
+      echo "📄 Showing config: $(basename "$FILE")"
+      LINK=$(grep "Reality Link:" "$FILE" | cut -d' ' -f3-)
+      if [ -z "$LINK" ]; then
+        echo "❌ No link found inside file!"
+      else
+        echo ""
+        echo "🔗 $LINK"
+        echo ""
+        echo "📱 QR Code:"
+        qrencode -t ansiutf8 "$LINK"
+      fi
+      echo ""
+      read -p "Press Enter to return to menu..." _
+      continue
+      ;;
+    3)
+      echo "👋 Bye!"
+      exit 0
+      ;;
+    *)
+      echo "❌ Invalid option!"
+      sleep 1
+      continue
+      ;;
+  esac
+done
+
+# ---------- 🧱 Build New Inbound ----------
 read -p "🔢 Enter port number (e.g. 443): " PORT
 read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
 read -p "🕵️ Enter camouflage SNI (e.g. www.microsoft.com): " CAMO
 read -p "🏷 Enter tag name (default: reality-$PORT): " TAG
 TAG=${TAG:-reality-$PORT}
 
-# ---------- 🧹 Sanitize domain & SNI ----------
 clean_input() {
   local value="$1"
   echo "$value" \
@@ -29,29 +91,13 @@ clean_input() {
 DOMAIN=$(clean_input "$DOMAIN")
 CAMO=$(clean_input "$CAMO")
 
-# Check ASCII-only
-if printf %s "$DOMAIN" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
-  err "❌ Domain contains non-ASCII characters. Type with English keyboard."
-fi
-if printf %s "$CAMO" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
-  err "❌ SNI contains non-ASCII characters. Type with English keyboard."
-fi
+# Check ASCII
+if printf %s "$DOMAIN" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then err "❌ Domain contains non-ASCII characters."; fi
+if printf %s "$CAMO" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then err "❌ SNI contains non-ASCII characters."; fi
 
-# Validate host format
-echo "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' \
-  || err "❌ Invalid domain format: $DOMAIN"
-echo "$CAMO" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' \
-  || err "❌ Invalid SNI format: $CAMO"
-
-echo ""
-echo "✅ Summary:"
-echo "Port: $PORT"
-echo "Domain: $DOMAIN"
-echo "SNI: $CAMO"
-echo "Tag: $TAG"
-echo "----------------------------------------------"
-read -p "⚙️ Continue? (y/n): " CONFIRM
-[ "$CONFIRM" != "y" ] && echo "Cancelled." && exit 0
+# Validate format
+echo "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "❌ Invalid domain format"
+echo "$CAMO" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "❌ Invalid SNI format"
 
 # ---------- Step 2: Ensure deps ----------
 REQUIRED=(jq qrencode openssl curl)
@@ -64,19 +110,16 @@ done
 
 # ---------- Step 3: Ensure Xray ----------
 if ! has xray; then
-  echo "⚙️ Installing Xray from official source..."
+  echo "⚙️ Installing Xray..."
   bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install
 else
   echo "✅ Xray already installed: $(xray -v | head -n 1)"
 fi
 
-# ---------- Step 4: Ensure config.json (always with inbounds & outbounds) ----------
-echo "🧱 Ensuring Xray config.json exists..."
+# ---------- Step 4: Ensure config.json ----------
+echo "🧱 Ensuring config.json..."
 mkdir -p "$(dirname "$CONFIG")"
-
-# اگر فایل وجود ندارد، از صفر بساز:
 if [ ! -f "$CONFIG" ]; then
-  echo "📄 Creating new base config.json..."
   cat > "$CONFIG" <<'JSON'
 {
   "inbounds": [],
@@ -86,16 +129,8 @@ if [ ! -f "$CONFIG" ]; then
 }
 JSON
 else
-  # اگر فایل هست، چک کن آیا inbounds یا outbounds وجود دارند:
-  if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then
-    echo "⚠️ Missing inbounds array — fixing..."
-    jq '. + {inbounds: []}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"
-  fi
-  if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then
-    echo "⚠️ Missing outbounds array — adding default freedom outbound..."
-    jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"
-  fi
-  echo "✅ config.json verified and valid."
+  if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {inbounds: []}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
+  if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
 fi
 
 # ---------- Step 5: Generate keys ----------
@@ -108,12 +143,10 @@ SHORTID=$(openssl rand -hex 8)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
 PRIVFILE="/usr/local/etc/xray/reality-priv-${PORT}.key"
-mkdir -p "$(dirname "$PRIVFILE")"
 echo -n "$PRIV" > "$PRIVFILE"
 chmod 600 "$PRIVFILE"
-chown root:root "$PRIVFILE"
 
-# ---------- Step 6: Build inbound ----------
+# ---------- Step 6: Add inbound ----------
 INBOUND=$(jq -n \
   --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" \
   --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" '
@@ -140,8 +173,6 @@ TMP=$(mktemp)
 jq ".inbounds += [ $INBOUND ]" "$CONFIG" > "$TMP" && mv "$TMP" "$CONFIG"
 
 chmod 644 "$CONFIG"
-echo "✅ Inbound appended to config.json successfully."
-
 systemctl restart xray
 sleep 2
 
@@ -169,3 +200,5 @@ EOF
 echo ""
 echo "✅ Saved info to: ~/loopa-reality-${PORT}.txt"
 echo "🎉 Reality inbound created successfully!"
+read -p "Press Enter to return to main menu..." _
+exec "$0"
