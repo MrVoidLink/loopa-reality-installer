@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# Loopa Reality Setup Wizard (v3.3 - multi inbound build)
+# Loopa Reality Setup Wizard (v3.4 - fixed config builder)
 # Type: VLESS + TCP + REALITY 🔒
 # Author: Mr Void 💀
 
@@ -9,7 +9,7 @@ CONFIG="/usr/local/etc/xray/config.json"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "🌀 Welcome to Loopa Reality inbound creator (v3.3 multi-inbound)"
+echo "🌀 Welcome to Loopa Reality inbound creator (v3.4 stable)"
 echo "=============================================="
 read -p "🔢 Enter port number (e.g. 443): " PORT
 read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
@@ -31,10 +31,10 @@ CAMO=$(clean_input "$CAMO")
 
 # Check ASCII-only
 if printf %s "$DOMAIN" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
-  err "❌ Domain contains non-ASCII characters. Type with English keyboard, e.g. vpn.loopa-vpn.com"
+  err "❌ Domain contains non-ASCII characters. Type with English keyboard."
 fi
 if printf %s "$CAMO" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
-  err "❌ SNI contains non-ASCII characters. Type with English keyboard, e.g. www.microsoft.com"
+  err "❌ SNI contains non-ASCII characters. Type with English keyboard."
 fi
 
 # Validate host format
@@ -70,11 +70,13 @@ else
   echo "✅ Xray already installed: $(xray -v | head -n 1)"
 fi
 
-# ---------- Step 4: Ensure config.json exists ----------
-echo "🧱 Checking Xray config.json..."
+# ---------- Step 4: Ensure config.json (always with inbounds & outbounds) ----------
+echo "🧱 Ensuring Xray config.json exists..."
+mkdir -p "$(dirname "$CONFIG")"
+
+# اگر فایل وجود ندارد، از صفر بساز:
 if [ ! -f "$CONFIG" ]; then
-  echo "📄 Creating new clean config.json..."
-  mkdir -p "$(dirname "$CONFIG")"
+  echo "📄 Creating new base config.json..."
   cat > "$CONFIG" <<'JSON'
 {
   "inbounds": [],
@@ -84,7 +86,16 @@ if [ ! -f "$CONFIG" ]; then
 }
 JSON
 else
-  echo "✅ Existing config.json found — keeping current inbounds."
+  # اگر فایل هست، چک کن آیا inbounds یا outbounds وجود دارند:
+  if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then
+    echo "⚠️ Missing inbounds array — fixing..."
+    jq '. + {inbounds: []}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"
+  fi
+  if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then
+    echo "⚠️ Missing outbounds array — adding default freedom outbound..."
+    jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"
+  fi
+  echo "✅ config.json verified and valid."
 fi
 
 # ---------- Step 5: Generate keys ----------
