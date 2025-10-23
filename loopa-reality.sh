@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# Loopa Reality Setup Wizard (v1.0 - secure build)
+# Loopa Reality Setup Wizard (v3.3 - multi inbound build)
 # Type: VLESS + TCP + REALITY 🔒
 # Author: Mr Void 💀
 
@@ -9,7 +9,7 @@ CONFIG="/usr/local/etc/xray/config.json"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "🌀 Welcome to Loopa Reality inbound creator (v3.2 patched)"
+echo "🌀 Welcome to Loopa Reality inbound creator (v3.3 multi-inbound)"
 echo "=============================================="
 read -p "🔢 Enter port number (e.g. 443): " PORT
 read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
@@ -70,20 +70,22 @@ else
   echo "✅ Xray already installed: $(xray -v | head -n 1)"
 fi
 
-# ---------- Step 4: Always rebuild config ----------
-echo "🧱 Rebuilding clean Xray config.json..."
-mkdir -p "$(dirname "$CONFIG")"
-cat > "$CONFIG" <<'JSON'
+# ---------- Step 4: Ensure config.json exists ----------
+echo "🧱 Checking Xray config.json..."
+if [ ! -f "$CONFIG" ]; then
+  echo "📄 Creating new clean config.json..."
+  mkdir -p "$(dirname "$CONFIG")"
+  cat > "$CONFIG" <<'JSON'
 {
   "inbounds": [],
   "outbounds": [
-    {
-      "protocol": "freedom",
-      "settings": {}
-    }
+    { "protocol": "freedom", "settings": {} }
   ]
 }
 JSON
+else
+  echo "✅ Existing config.json found — keeping current inbounds."
+fi
 
 # ---------- Step 5: Generate keys ----------
 echo "🔐 Generating X25519 keypair..."
