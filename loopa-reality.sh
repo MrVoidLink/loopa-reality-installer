@@ -103,9 +103,10 @@ while true; do
   echo "=============================="
   echo "1) Create new Reality inbound"
   echo "2) Show existing configs (list + QR)"
-  echo "3) Firewall (ufw)"
-  echo "4) Exit"
-  read -p "Select an option [1-4]: " CHOICE
+  echo "3) Delete existing configs"
+  echo "4) Firewall (ufw)"
+  echo "5) Exit"
+  read -p "Select an option [1-5]: " CHOICE
 
   case $CHOICE in
     1)
@@ -146,13 +147,39 @@ while true; do
         qrencode -t ansiutf8 "$LINK"
       fi
       echo ""
-      read -p "Delete this config? [y/N]: " DELCHOICE
+      read -p "Press Enter to return to menu..." _
+      continue
+      ;;
+    3)
+      clear
+      echo "dY\" Delete existing configs"
+      FILES=($(ls $DATA_DIR/loopa-reality-*.txt 2>/dev/null || true))
+      if [ ${#FILES[@]} -eq 0 ]; then
+        echo "?s??,? No configs found yet."
+        sleep 1
+        continue
+      fi
+      i=1
+      for f in "${FILES[@]}"; do
+        echo "  $i) $(basename \"$f\")"
+        ((i++))
+      done
+      echo ""
+      read -p "Select a config number to delete: " NUM
+      IDX=$((NUM-1))
+      if [ -z "${FILES[$IDX]}" ]; then
+        echo "??O Invalid choice!"
+        sleep 1
+        continue
+      fi
+      FILE="${FILES[$IDX]}"
+      echo "Selected: $(basename "$FILE")"
+      read -p "Are you sure you want to delete? [y/N]: " DELCHOICE
       if [[ "$DELCHOICE" =~ ^[Yy]$ ]]; then
         TAG_TO_DEL=$(grep "^Tag:" "$FILE" | awk '{print $2}')
         PORT_TO_DEL=$(grep "^Port:" "$FILE" | awk '{print $2}')
         PRIV_TO_DEL=$(grep "^PrivateKeyFile:" "$FILE" | awk '{print $2}')
         [ -z "$TAG_TO_DEL" ] && [ -n "$PORT_TO_DEL" ] && TAG_TO_DEL="reality-$PORT_TO_DEL"
-
         if [ -f "$CONFIG" ] && [ -n "$TAG_TO_DEL" ]; then
           TMPDEL=$(mktemp)
           if jq --arg tag "$TAG_TO_DEL" '
@@ -170,20 +197,19 @@ while true; do
         else
           echo "??O No valid tag found to delete."
         fi
-
         [ -n "$PRIV_TO_DEL" ] && [ -f "$PRIV_TO_DEL" ] && rm -f "$PRIV_TO_DEL"
         rm -f "$FILE"
         systemctl restart xray || true
         echo "dYZ% Config deleted."
       fi
-      read -p "Press Enter to return to menu..." _
-      continue
-      ;;
-    3)
-      firewall_menu
+      sleep 1
       continue
       ;;
     4)
+      firewall_menu
+      continue
+      ;;
+    5)
       echo "👋 Bye!"
       exit 0
       ;;
