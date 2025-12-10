@@ -27,6 +27,8 @@ It will automatically:
 ✅ Creates and saves ready-to-scan **QR code**  
 ✅ Outputs clean `~/loopa-reality-PORT.txt` info file  
 ✅ Automatically restarts Xray safely  
+✅ Manage firewall (ufw) via menu: turn ON/OFF, open/close ports, list rules
+✅ Delete existing Loopa configs (removes inbound, saved info file, private key)
 
 ---
 
@@ -62,6 +64,12 @@ vless://123e4567-e89b-12d3-a456-426614174000@vpn.loopa-vpn.com:443?security=real
 - Config saved at `/usr/local/etc/xray/config.json`  
 - Output summary file stored at `~/loopa-reality-PORT.txt`  
 - Safe to rerun multiple times — script always rebuilds clean configs  
+- Menu layout:
+  - 1) Create new Reality inbound
+  - 2) Show existing configs (list + QR)
+  - 3) Delete existing configs (removes inbound + file + key)
+  - 4) Firewall (ufw): ON/OFF, allow/close TCP ports, list rules
+  - 5) Exit
 
 ---
 
