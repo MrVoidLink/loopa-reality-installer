@@ -9,6 +9,93 @@ DATA_DIR="$HOME"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
+firewall_status() {
+  if ! has ufw; then
+    echo "Firewall tool (ufw) not installed."
+    return 1
+  fi
+  ufw status 2>/dev/null | head -n1
+}
+
+firewall_menu() {
+  if ! has ufw; then
+    echo "?z??,? Installing ufw (firewall tool)..."
+    apt update -y && apt install -y ufw
+  fi
+
+  while true; do
+    clear
+    STATUS_LINE=$(firewall_status)
+    STATUS_STATE=$(echo "$STATUS_LINE" | awk '{print $2}')
+    echo "dYO? Firewall (ufw)"
+    echo "==================="
+    echo "$STATUS_LINE"
+    if [ "$STATUS_STATE" = "active" ]; then
+      echo "1) Turn OFF firewall"
+    else
+      echo "1) Turn ON firewall"
+    fi
+    echo "2) Open a port (allow)"
+    echo "3) Close a port (delete allow)"
+    echo "4) List rules"
+    echo "5) Back to main menu"
+    read -p "Choose [1-5]: " FWCHOICE
+
+    case $FWCHOICE in
+      1)
+        if [ "$STATUS_STATE" = "active" ]; then
+          ufw disable
+          echo "Firewall turned OFF."
+        else
+          ufw --force enable
+          echo "Firewall turned ON."
+        fi
+        sleep 1
+        ;;
+      2)
+        if [ "$STATUS_STATE" != "active" ]; then
+          echo "Firewall is OFF. Turning it ON first..."
+          ufw --force enable
+          STATUS_STATE="active"
+        fi
+        read -p "Enter port to open (e.g. 443): " FWPORT
+        [ -z "$FWPORT" ] && { echo "No port entered."; sleep 1; continue; }
+        ufw allow "${FWPORT}/tcp"
+        echo "Allowed TCP port $FWPORT."
+        sleep 1
+        ;;
+      3)
+        if [ "$STATUS_STATE" != "active" ]; then
+          echo "Firewall is OFF. Nothing to close."
+          sleep 1
+          continue
+        fi
+        read -p "Enter port to close (delete allow): " FWPORT
+        [ -z "$FWPORT" ] && { echo "No port entered."; sleep 1; continue; }
+        if echo y | ufw delete allow "${FWPORT}/tcp"; then
+          echo "Closed TCP port $FWPORT."
+        else
+          echo "Failed to close port $FWPORT."
+        fi
+        sleep 1
+        ;;
+      4)
+        clear
+        ufw status numbered
+        echo ""
+        read -p "Press Enter to return..." _
+        ;;
+      5)
+        break
+        ;;
+      *)
+        echo "??O Invalid firewall option!"
+        sleep 1
+        ;;
+    esac
+  done
+}
+
 # ---------- 🧭 Main Menu ----------
 while true; do
   clear
@@ -16,8 +103,9 @@ while true; do
   echo "=============================="
   echo "1) Create new Reality inbound"
   echo "2) Show existing configs (list + QR)"
-  echo "3) Exit"
-  read -p "Select an option [1-3]: " CHOICE
+  echo "3) Firewall (ufw)"
+  echo "4) Exit"
+  read -p "Select an option [1-4]: " CHOICE
 
   case $CHOICE in
     1)
@@ -92,6 +180,10 @@ while true; do
       continue
       ;;
     3)
+      firewall_menu
+      continue
+      ;;
+    4)
       echo "👋 Bye!"
       exit 0
       ;;
