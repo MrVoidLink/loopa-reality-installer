@@ -58,6 +58,36 @@ while true; do
         qrencode -t ansiutf8 "$LINK"
       fi
       echo ""
+      read -p "Delete this config? [y/N]: " DELCHOICE
+      if [[ "$DELCHOICE" =~ ^[Yy]$ ]]; then
+        TAG_TO_DEL=$(grep "^Tag:" "$FILE" | awk '{print $2}')
+        PORT_TO_DEL=$(grep "^Port:" "$FILE" | awk '{print $2}')
+        PRIV_TO_DEL=$(grep "^PrivateKeyFile:" "$FILE" | awk '{print $2}')
+        [ -z "$TAG_TO_DEL" ] && [ -n "$PORT_TO_DEL" ] && TAG_TO_DEL="reality-$PORT_TO_DEL"
+
+        if [ -f "$CONFIG" ] && [ -n "$TAG_TO_DEL" ]; then
+          TMPDEL=$(mktemp)
+          if jq --arg tag "$TAG_TO_DEL" '
+            if (.inbounds // null) then
+              .inbounds = [ (.inbounds[]? | select(.tag != $tag)) ]
+            else .
+            end
+          ' "$CONFIG" > "$TMPDEL"; then
+            mv "$TMPDEL" "$CONFIG"
+            echo "?o. Removed inbound with tag: $TAG_TO_DEL"
+          else
+            echo "??O Failed to update $CONFIG"
+            rm -f "$TMPDEL"
+          fi
+        else
+          echo "??O No valid tag found to delete."
+        fi
+
+        [ -n "$PRIV_TO_DEL" ] && [ -f "$PRIV_TO_DEL" ] && rm -f "$PRIV_TO_DEL"
+        rm -f "$FILE"
+        systemctl restart xray || true
+        echo "dYZ% Config deleted."
+      fi
       read -p "Press Enter to return to menu..." _
       continue
       ;;
