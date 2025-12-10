@@ -9,60 +9,6 @@ DATA_DIR="$HOME"
 err(){ echo "❌ $*" >&2; exit 1; }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
-show_connected_users() {
-  LOG_FILE="/var/log/xray/access.log"
-  WINDOW_MIN=10
-  clear
-  echo "dYO? Connected users (last ${WINDOW_MIN} minutes)"
-  echo "==========================================="
-  if [ ! -f "$LOG_FILE" ]; then
-    echo "??O Access log not found at $LOG_FILE. Enable logging first."
-    read -p "Press Enter to return..." _
-    return
-  fi
-
-  CUTOFF=$(date -d "-${WINDOW_MIN} minutes" +%s)
-  SUMMARY=$(awk -v cutoff="$CUTOFF" '
-    function mk(d,t){
-      gsub(/\[|\]/,"",d);
-      split(d,da,"/"); split(t,ta,":");
-      if (length(da)!=3 || length(ta)!=3) return 0;
-      return mktime(da[1]" "da[2]" "da[3]" " ta[1]" " ta[2]" " ta[3]);
-    }
-    {
-      if (NF < 2) next;
-      ts = mk($1,$2);
-      if (ts == 0 || ts < cutoff) next;
-      user = "(no-email)";
-      if (match($0,/user=([^ ]+)/,m)) user=m[1];
-      ip = "unknown";
-      if (match($0,/tcp:([^ ]+)/,m2)) ip=m2[1];
-      if (ts > last[user]) { last[user]=ts; lastip[user]=ip; }
-      count[user]++;
-    }
-    END {
-      for (u in last) {
-        print last[u] "|" u "|" count[u] "|" lastip[u];
-      }
-    }
-  ' "$LOG_FILE")
-
-  if [ -z "$SUMMARY" ]; then
-    echo "?s??,? No recent connections in the last ${WINDOW_MIN} minutes."
-    read -p "Press Enter to return..." _
-    return
-  fi
-
-  i=1
-  echo "$SUMMARY" | sort -nr | while IFS='"|"' read -r ts user cnt ip; do
-    LAST_HUMAN=$(date -d "@$ts" +"%Y-%m-%d %H:%M:%S")
-    printf "  %d) user=%s | last=%s | hits=%s | ip=%s\n" "$i" "$user" "$LAST_HUMAN" "$cnt" "$ip"
-    i=$((i+1))
-  done
-  echo ""
-  read -p "Press Enter to return..." _
-}
-
 firewall_status() {
   if ! has ufw; then
     echo "Firewall tool (ufw) not installed."
@@ -157,11 +103,10 @@ while true; do
   echo "=============================="
   echo "1) Create new Reality inbound"
   echo "2) Show existing configs (list + QR)"
-  echo "3) Connected users (last 10m)"
-  echo "4) Delete existing configs"
-  echo "5) Firewall (ufw)"
-  echo "6) Exit"
-  read -p "Select an option [1-6]: " CHOICE
+  echo "3) Delete existing configs"
+  echo "4) Firewall (ufw)"
+  echo "5) Exit"
+  read -p "Select an option [1-5]: " CHOICE
 
   case $CHOICE in
     1)
@@ -206,10 +151,6 @@ while true; do
       continue
       ;;
     3)
-      show_connected_users
-      continue
-      ;;
-    4)
       clear
       echo "dY\" Delete existing configs"
       FILES=($(ls $DATA_DIR/loopa-reality-*.txt 2>/dev/null || true))
@@ -264,11 +205,11 @@ while true; do
       sleep 1
       continue
       ;;
-    5)
+    4)
       firewall_menu
       continue
       ;;
-    6)
+    5)
       echo "👋 Bye!"
       exit 0
       ;;
@@ -326,15 +267,9 @@ fi
 # ---------- Step 4: Ensure config.json ----------
 echo "🧱 Ensuring config.json..."
 mkdir -p "$(dirname "$CONFIG")"
-mkdir -p /var/log/xray
 if [ ! -f "$CONFIG" ]; then
   cat > "$CONFIG" <<'JSON'
 {
-  "log": {
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log",
-    "loglevel": "info"
-  },
   "inbounds": [],
   "outbounds": [
     { "protocol": "freedom", "settings": {} }
@@ -344,7 +279,6 @@ JSON
 else
   if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {inbounds: []}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
   if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
-  if ! jq -e '.log' "$CONFIG" >/dev/null 2>&1; then jq '. + {log:{access:"/var/log/xray/access.log",error:"/var/log/xray/error.log",loglevel:"info"}}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
 fi
 
 # ---------- Step 5: Generate keys ----------
