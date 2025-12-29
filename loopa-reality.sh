@@ -433,7 +433,7 @@ while true; do
       continue
       ;;
     6)
-      echo "dY`< Bye!"
+      echo "Bye!"
       exit 0
       ;;
     *)
