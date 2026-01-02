@@ -7,7 +7,7 @@ Smart and secure installer for **Xray (VLESS + TCP + REALITY)** — built by **M
 ## 🚀 Quick Install
 Run this one-line command as **root** on your Ubuntu server:
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/MrVoidLink/loopa-reality-installer/main/loopa-reality.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/MrVoidLink/loopa-reality-installer/main/loopa-reality.sh)"
 ```
 
 It will automatically:
@@ -28,6 +28,7 @@ It will automatically:
 ✅ Outputs clean `~/loopa-reality-PORT.txt` info file  
 ✅ Automatically restarts Xray safely  
 ✅ Manage firewall (ufw) via menu: turn ON/OFF, open/close ports, list rules
+✅ Optional Stats API (CPU/RAM/Load) with systemd service
 ✅ Delete existing Loopa configs (removes inbound, saved info file, private key)
 
 ---
@@ -69,7 +70,8 @@ vless://123e4567-e89b-12d3-a456-426614174000@vpn.loopa-vpn.com:443?security=real
   - 2) Show existing configs (list + QR)
   - 3) Delete existing configs (removes inbound + file + key)
   - 4) Firewall (ufw): ON/OFF, allow/close TCP ports, list rules
-  - 5) Exit
+  - 5) Stats API (CPU/RAM/Load)
+  - 6) Exit
 
 ---
 
