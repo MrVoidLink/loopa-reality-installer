@@ -124,6 +124,8 @@ install_stats_api() {
   read -p "Port [8799]: " STATS_PORT
   STATS_PORT=${STATS_PORT:-8799}
   read -p "API key (optional, leave empty for no auth): " STATS_KEY
+  read -p "Allowed IP/CIDR (optional, leave empty for any): " STATS_ALLOW_IP
+
 
   cat > "$STATS_SCRIPT" <<'PY'
 #!/usr/bin/env python3
@@ -246,8 +248,9 @@ EOF
 
   if has ufw; then
     if ufw status 2>/dev/null | head -n1 | grep -q "active"; then
-      read -p "Open port $STATS_PORT in ufw? [y/N]: " OPENFW
-      if [[ "$OPENFW" =~ ^[Yy]$ ]]; then
+      if [ -n "$STATS_ALLOW_IP" ]; then
+        ufw allow from "$STATS_ALLOW_IP" to any port "$STATS_PORT" proto tcp
+      else
         ufw allow "${STATS_PORT}/tcp"
       fi
     fi
