@@ -785,11 +785,6 @@ create_vless_tcp_inbound() {
           "tcpNoDelay": true
         }
       }
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "direct"
     }
   ],
   "api": {
