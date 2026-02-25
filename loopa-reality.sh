@@ -26,9 +26,7 @@ clean_input() {
   local value="$1"
   echo "$value" \
     | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[[:space:]]//g' \
-          -e 's/–/-/g' -e 's/—/-/g' -e 's/−/-/g' \
-          -e 's/․/./g'
+    | sed -e 's/[[:space:]]//g'
 }
 
 validate_port() {
@@ -45,6 +43,26 @@ validate_domain() {
 
 detect_public_ip() {
   local ip=""
+
+  # Optional override for non-standard network setups.
+  if [ -n "${LOOPA_SERVER_ADDR:-}" ]; then
+    ip=$(echo "${LOOPA_SERVER_ADDR}" | tr -d ' \r\n')
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      echo "$ip"
+      return 0
+    fi
+  fi
+
+  # Prefer the server IP used in the current SSH session:
+  # SSH_CONNECTION format: "<client_ip> <client_port> <server_ip> <server_port>"
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    ip=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      echo "$ip"
+      return 0
+    fi
+  fi
+
   local urls=(
     "https://api.ipify.org"
     "https://ipv4.icanhazip.com"
@@ -57,6 +75,12 @@ detect_public_ip() {
       return 0
     fi
   done
+
+  ip=$(ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1 || true)
+  if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "$ip"
+    return 0
+  fi
 
   ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
   if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
@@ -656,6 +680,7 @@ create_vless_tcp_inbound() {
 
   SERVER_ADDR=$(detect_public_ip || true)
   [ -z "${SERVER_ADDR:-}" ] && err "Could not detect server public IPv4 address automatically."
+  echo "Detected server address: $SERVER_ADDR"
 
   ensure_packages
   ensure_xray
