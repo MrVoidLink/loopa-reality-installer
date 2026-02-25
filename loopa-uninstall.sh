@@ -59,8 +59,8 @@ fi
 
 # Remove user-created loopa files in home
 echo
-echo "Removing user-local loopa files (~/loopa-reality-*.txt, /tmp/loopa*, /tmp/xray*) ..."
-rm -f ~/loopa-reality-*.txt /tmp/loopa* /tmp/xray* 2>/dev/null || true
+echo "Removing user-local loopa files (~/loopa-reality-*.txt, ~/loopa-vless-*.txt, ~/loopa-vless-client-*.json, /tmp/loopa*, /tmp/xray*) ..."
+rm -f ~/loopa-reality-*.txt ~/loopa-vless-*.txt ~/loopa-vless-client-*.json /tmp/loopa* /tmp/xray* 2>/dev/null || true
 
 # Optionally remove packages installed earlier
 echo

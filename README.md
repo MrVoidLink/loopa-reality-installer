@@ -1,94 +1,65 @@
-# 🌀 Loopa Reality Installer (v1.0)
+# Loopa Xray Installer (v5.0)
 
-Smart and secure installer for **Xray (VLESS + TCP + REALITY)** — built by **Mr Void 💀**.
+Interactive installer/manager for Xray with two inbound types:
+- `VLESS + TCP + REALITY`
+- `VLESS + TCP + security=none` (no TLS)
 
----
+## Quick Install
+Run as `root` on Ubuntu/Debian:
 
-## 🚀 Quick Install
-Run this one-line command as **root** on your Ubuntu server:
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/MrVoidLink/loopa-reality-installer/main/loopa-reality.sh)"
 ```
 
-It will automatically:
-- 🧩 Install dependencies (`curl`, `jq`, `openssl`, `qrencode`)
-- ⚙️ Install **Xray-core** if missing  
-- 🔒 Create **VLESS + REALITY** inbound config  
-- 🔐 Generate private/public keys, UUID, shortId  
-- 🧠 Sanitize your domain & SNI safely  
-- 🪄 Restart Xray and show QR/link ready to scan  
+## What It Does
+- Installs required packages (`curl`, `jq`, `openssl`, `qrencode`) if missing
+- Installs `xray` if missing
+- Ensures `/usr/local/etc/xray/config.json` has required structure
+- Adds new inbounds without destroying existing ones
+- Restarts `xray` safely
+- Shows VLESS link + QR code
+- Saves config summary files
 
----
+## Menu
+1. Create new Reality inbound
+2. Create new VLESS TCP inbound (no TLS)
+3. Show existing configs (list + QR)
+4. Delete existing configs
+5. Firewall (ufw)
+6. Stats API (CPU/RAM/Load)
+7. Exit
 
-## ✨ Features
-✅ Builds a clean `config.json` (always includes inbound + outbound)  
-✅ Validates and sanitizes domain & SNI (prevents Persian or special chars)  
-✅ Generates **X25519 keys + UUID + ShortID**  
-✅ Creates and saves ready-to-scan **QR code**  
-✅ Outputs clean `~/loopa-reality-PORT.txt` info file  
-✅ Automatically restarts Xray safely  
-✅ Manage firewall (ufw) via menu: turn ON/OFF, open/close ports, list rules
-✅ Optional Stats API (CPU/RAM/Load) with systemd service
-✅ Delete existing Loopa configs (removes inbound, saved info file, private key)
+## New VLESS (no TLS) Option
+When you choose option `2`, the wizard asks:
+- `Port`
+- `Tag` (default `vless-PORT`)
+- `UUID` (optional, auto-generate if empty)
+- `Link name`
 
----
+Important behavior:
+- It does **not** ask for server IP.
+- It auto-detects public IPv4 and uses it in the generated client link.
 
-## 📄 Example Output
-After creating a new Reality config:
-```
-✅ Reality inbound successfully added!
------------------------------------------------
-Tag        : reality-443
-Domain     : vpn.loopa-vpn.com
-SNI        : www.google.com
-UUID       : 123e4567-e89b-12d3-a456-426614174000
-ShortId    : 44ddc2e36398525c
-Port       : 443
------------------------------------------------
-Reality Link:
-vless://123e4567-e89b-12d3-a456-426614174000@vpn.loopa-vpn.com:443?security=reality&sni=www.google.com&pbk=AABBCCDD&sid=44ddc2e36398525c&fp=chrome&type=tcp#reality-443
------------------------------------------------
-📱 QR Code (scan with v2rayNG)
-```
+Output files:
+- `~/loopa-vless-PORT.txt` (summary + link)
+- `~/loopa-vless-client-PORT.json` (client config template)
 
----
+## Reality Option
+When you choose option `1`, the wizard asks:
+- `Port`
+- `Domain`
+- `Camouflage SNI`
+- `Tag` (default `reality-PORT`)
 
-## 🧠 Requirements
-- Ubuntu **20.04 / 22.04 / 24.04**
-- Root access  
-- Internet connection  
+Output file:
+- `~/loopa-reality-PORT.txt`
 
----
+## Requirements
+- Ubuntu/Debian with `systemd`
+- Root access
+- Internet access
 
-## 💡 Notes
-- Uses official [XTLS/Xray-install](https://github.com/XTLS/Xray-install) for core setup  
-- Config saved at `/usr/local/etc/xray/config.json`  
-- Output summary file stored at `~/loopa-reality-PORT.txt`  
-- Safe to rerun multiple times — script always rebuilds clean configs  
-- Menu layout:
-  - 1) Create new Reality inbound
-  - 2) Show existing configs (list + QR)
-  - 3) Delete existing configs (removes inbound + file + key)
-  - 4) Firewall (ufw): ON/OFF, allow/close TCP ports, list rules
-  - 5) Stats API (CPU/RAM/Load)
-  - 6) Exit
-
----
-
-## 🧰 File Structure
-```
-loopa-reality.sh    → Main installer script
-README.md           → Documentation and usage guide
-```
-
----
-
-## 💬 Author
-Developed by **Mr Void 💀**  
-🔗 GitHub: [@MrVoidLink](https://github.com/MrVoidLink)
-
----
-
-## 🪪 License
-**MIT License** © 2025 Mr Void  
-Free to use, modify, and distribute — just keep credits intact.
+## Paths
+- Xray config: `/usr/local/etc/xray/config.json`
+- Main script: `loopa-reality.sh`
+- Uninstall helper: `loopa-uninstall.sh`

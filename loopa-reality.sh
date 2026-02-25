@@ -1,16 +1,139 @@
 #!/bin/bash
-set -e
-# Loopa Reality Setup Wizard (v4.0 - Manager Edition)
-# Type: VLESS + TCP + REALITY 🔒
-# Author: Mr Void 💀
+set -euo pipefail
+
+# Loopa Xray Setup Wizard (v5.0)
+# Types:
+# - VLESS + TCP + REALITY
+# - VLESS + TCP + none (no TLS)
 
 CONFIG="/usr/local/etc/xray/config.json"
 DATA_DIR="$HOME"
 STATS_SERVICE="/etc/systemd/system/loopa-stats-api.service"
 STATS_SERVICE_NAME="loopa-stats-api"
 STATS_SCRIPT="/usr/local/bin/loopa-stats-api.py"
-err(){ echo "❌ $*" >&2; exit 1; }
-has(){ command -v "$1" >/dev/null 2>&1; }
+XRAY_INSTALL_URL="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
+
+err() { echo "ERROR: $*" >&2; exit 1; }
+has() { command -v "$1" >/dev/null 2>&1; }
+
+require_root() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    err "Please run this script as root."
+  fi
+}
+
+clean_input() {
+  local value="$1"
+  echo "$value" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/[[:space:]]//g' \
+          -e 's/–/-/g' -e 's/—/-/g' -e 's/−/-/g' \
+          -e 's/․/./g'
+}
+
+validate_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] || err "Port must be numeric."
+  (( port >= 1 && port <= 65535 )) || err "Port must be between 1 and 65535."
+}
+
+validate_domain() {
+  local value="$1"
+  printf %s "$value" | LC_ALL=C grep -qP '[^\x00-\x7F]' && err "Input contains non-ASCII characters."
+  echo "$value" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "Invalid domain format: $value"
+}
+
+detect_public_ip() {
+  local ip=""
+  local urls=(
+    "https://api.ipify.org"
+    "https://ipv4.icanhazip.com"
+    "https://ifconfig.me/ip"
+  )
+  for url in "${urls[@]}"; do
+    ip=$(curl -4fsS "$url" 2>/dev/null | tr -d '\r\n' || true)
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      echo "$ip"
+      return 0
+    fi
+  done
+
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "$ip"
+    return 0
+  fi
+  return 1
+}
+
+encode_link_name() {
+  local name="$1"
+  echo "${name// /%20}"
+}
+
+ensure_packages() {
+  local required=(jq qrencode openssl curl)
+  for pkg in "${required[@]}"; do
+    if ! has "$pkg"; then
+      apt update -y
+      apt install -y "$pkg"
+    fi
+  done
+}
+
+ensure_xray() {
+  if ! has xray; then
+    bash <(curl -L "$XRAY_INSTALL_URL") install
+  fi
+}
+
+ensure_config() {
+  mkdir -p "$(dirname "$CONFIG")"
+  if [ ! -f "$CONFIG" ]; then
+    cat > "$CONFIG" <<'JSON'
+{
+  "inbounds": [],
+  "outbounds": [
+    { "protocol": "freedom", "settings": {} }
+  ]
+}
+JSON
+  else
+    if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then
+      jq '. + {inbounds: []}' "$CONFIG" > /tmp/xray_cfg_tmp && mv /tmp/xray_cfg_tmp "$CONFIG"
+    fi
+    if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then
+      jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/xray_cfg_tmp && mv /tmp/xray_cfg_tmp "$CONFIG"
+    fi
+  fi
+}
+
+tag_exists() {
+  local tag="$1"
+  jq -e --arg tag "$tag" '.inbounds[]? | select((.tag // "") == $tag)' "$CONFIG" >/dev/null 2>&1
+}
+
+port_exists() {
+  local port="$1"
+  jq -e --argjson p "$port" '.inbounds[]? | select((.port // -1) == $p)' "$CONFIG" >/dev/null 2>&1
+}
+
+ensure_tag_port_free() {
+  local tag="$1"
+  local port="$2"
+  if port_exists "$port"; then
+    err "Port $port already exists in xray inbounds."
+  fi
+  if tag_exists "$tag"; then
+    err "Tag '$tag' already exists in xray inbounds."
+  fi
+}
+
+restart_xray() {
+  systemctl restart xray
+  sleep 1
+  systemctl is-active --quiet xray
+}
 
 firewall_status() {
   if ! has ufw; then
@@ -22,7 +145,6 @@ firewall_status() {
 
 firewall_menu() {
   if ! has ufw; then
-    echo "?z??,? Installing ufw (firewall tool)..."
     apt update -y && apt install -y ufw
   fi
 
@@ -30,8 +152,8 @@ firewall_menu() {
     clear
     STATUS_LINE=$(firewall_status)
     STATUS_STATE=$(echo "$STATUS_LINE" | awk '{print $2}')
-    echo "dYO? Firewall (ufw)"
-    echo "==================="
+    echo "Firewall (ufw)"
+    echo "=============="
     echo "$STATUS_LINE"
     if [ "$STATUS_STATE" = "active" ]; then
       echo "1) Turn OFF firewall"
@@ -42,7 +164,7 @@ firewall_menu() {
     echo "3) Close a port (delete allow)"
     echo "4) List rules"
     echo "5) Back to main menu"
-    read -p "Choose [1-5]: " FWCHOICE
+    read -rp "Choose [1-5]: " FWCHOICE
 
     case $FWCHOICE in
       1)
@@ -57,11 +179,10 @@ firewall_menu() {
         ;;
       2)
         if [ "$STATUS_STATE" != "active" ]; then
-          echo "Firewall is OFF. Turning it ON first..."
           ufw --force enable
           STATUS_STATE="active"
         fi
-        read -p "Enter port to open (e.g. 443): " FWPORT
+        read -rp "Enter port to open (e.g. 443): " FWPORT
         [ -z "$FWPORT" ] && { echo "No port entered."; sleep 1; continue; }
         ufw allow "${FWPORT}/tcp"
         echo "Allowed TCP port $FWPORT."
@@ -73,7 +194,7 @@ firewall_menu() {
           sleep 1
           continue
         fi
-        read -p "Enter port to close (delete allow): " FWPORT
+        read -rp "Enter port to close (delete allow): " FWPORT
         [ -z "$FWPORT" ] && { echo "No port entered."; sleep 1; continue; }
         if echo y | ufw delete allow "${FWPORT}/tcp"; then
           echo "Closed TCP port $FWPORT."
@@ -86,20 +207,18 @@ firewall_menu() {
         clear
         ufw status numbered
         echo ""
-        read -p "Press Enter to return..." _
+        read -rp "Press Enter to return..." _
         ;;
       5)
         break
         ;;
       *)
-        echo "??O Invalid firewall option!"
+        echo "Invalid firewall option."
         sleep 1
         ;;
     esac
   done
 }
-
-# ---------- 🧭 Main Menu ----------
 
 stats_service_status() {
   if [ ! -f "$STATS_SERVICE" ]; then
@@ -115,17 +234,15 @@ stats_service_status() {
 
 install_stats_api() {
   if ! has python3; then
-    echo "Installing python3..."
     apt update -y && apt install -y python3
   fi
 
-  read -p "Bind address [127.0.0.1]: " STATS_BIND
+  read -rp "Bind address [127.0.0.1]: " STATS_BIND
   STATS_BIND=${STATS_BIND:-127.0.0.1}
-  read -p "Port [8799]: " STATS_PORT
+  read -rp "Port [8799]: " STATS_PORT
   STATS_PORT=${STATS_PORT:-8799}
-  read -p "API key (optional, leave empty for no auth): " STATS_KEY
-  read -p "Allowed IP/CIDR (optional, leave empty for any): " STATS_ALLOW_IP
-
+  read -rp "API key (optional, leave empty for no auth): " STATS_KEY
+  read -rp "Allowed IP/CIDR (optional, leave empty for any): " STATS_ALLOW_IP
 
   cat > "$STATS_SCRIPT" <<'PY'
 #!/usr/bin/env python3
@@ -260,7 +377,7 @@ EOF
   if [ -n "$STATS_KEY" ]; then
     echo "Use X-API-Key header or ?token=$STATS_KEY"
   fi
-  read -p "Press Enter to return..." _
+  read -rp "Press Enter to return..." _
 }
 
 remove_stats_api() {
@@ -269,18 +386,18 @@ remove_stats_api() {
   rm -f "$STATS_SCRIPT"
   systemctl daemon-reload
   echo "Stats API removed."
-  read -p "Press Enter to return..." _
+  read -rp "Press Enter to return..." _
 }
 
 show_stats_settings() {
   if [ ! -f "$STATS_SERVICE" ]; then
     echo "Stats API is not installed."
-    read -p "Press Enter to return..." _
+    read -rp "Press Enter to return..." _
     return
   fi
   echo "Current Stats API settings:"
   grep -E "^Environment=LOOPA_STATS_" "$STATS_SERVICE" || true
-  read -p "Press Enter to return..." _
+  read -rp "Press Enter to return..." _
 }
 
 stats_api_menu() {
@@ -294,272 +411,214 @@ stats_api_menu() {
     echo "2) Stop and remove"
     echo "3) Show settings"
     echo "4) Back to main menu"
-    read -p "Choose [1-4]: " STATSCHOICE
+    read -rp "Choose [1-4]: " STATSCHOICE
 
     case $STATSCHOICE in
-      1)
-        install_stats_api
-        ;;
-      2)
-        remove_stats_api
-        ;;
-      3)
-        show_stats_settings
-        ;;
-      4)
-        break
-        ;;
+      1) install_stats_api ;;
+      2) remove_stats_api ;;
+      3) show_stats_settings ;;
+      4) break ;;
       *)
-        echo "Invalid choice!"
+        echo "Invalid choice."
         sleep 1
         ;;
     esac
   done
 }
 
+list_config_files() {
+  local files=()
+  shopt -s nullglob
+  files=( "$DATA_DIR"/loopa-reality-*.txt "$DATA_DIR"/loopa-vless-*.txt )
+  shopt -u nullglob
+  printf '%s\n' "${files[@]}"
+}
 
-while true; do
+show_existing_configs() {
   clear
-  echo "🌀 Loopa Reality Wizard (v4.0)"
-  echo "=============================="
-  echo "1) Create new Reality inbound"
-  echo "2) Show existing configs (list + QR)"
-  echo "3) Delete existing configs"
-  echo "4) Firewall (ufw)"
-  echo "5) Stats API (CPU/RAM/Load)"
-  echo "6) Exit"
-  read -p "Select an option [1-6]: " CHOICE
-
-  case $CHOICE in
-    1)
-      clear
-      echo "🚀 Starting inbound creation..."
-      break
-      ;;
-    2)
-      clear
-      echo "📂 Available Loopa Reality configs:"
-      FILES=($(ls $DATA_DIR/loopa-reality-*.txt 2>/dev/null || true))
-      if [ ${#FILES[@]} -eq 0 ]; then
-        echo "⚠️ No configs found yet."
-        read -p "Press Enter to return to menu..." _
-        continue
-      fi
-      i=1
-      for f in "${FILES[@]}"; do
-        echo "  $i) $(basename "$f")"
-        ((i++))
-      done
-      echo ""
-      read -p "Select a config number: " NUM
-      IDX=$((NUM-1))
-      [ -z "${FILES[$IDX]}" ] && echo "❌ Invalid choice!" && sleep 1 && continue
-
-      FILE="${FILES[$IDX]}"
-      clear
-      echo "📄 Showing config: $(basename "$FILE")"
-      LINK=$(grep "Reality Link:" "$FILE" | cut -d' ' -f3-)
-      if [ -z "$LINK" ]; then
-        echo "❌ No link found inside file!"
-      else
-        echo ""
-        echo "🔗 $LINK"
-        echo ""
-        echo "📱 QR Code:"
-        qrencode -t ansiutf8 "$LINK"
-      fi
-      echo ""
-      read -p "Press Enter to return to menu..." _
-      continue
-      ;;
-    3)
-      clear
-      echo "dY\" Delete existing configs"
-      FILES=($(ls $DATA_DIR/loopa-reality-*.txt 2>/dev/null || true))
-      if [ ${#FILES[@]} -eq 0 ]; then
-        echo "?s??,? No configs found yet."
-        sleep 1
-        continue
-      fi
-      i=1
-      for f in "${FILES[@]}"; do
-        echo "  $i) $(basename \"$f\")"
-        ((i++))
-      done
-      echo ""
-      read -p "Select a config number to delete: " NUM
-      IDX=$((NUM-1))
-      if [ -z "${FILES[$IDX]}" ]; then
-        echo "??O Invalid choice!"
-        sleep 1
-        continue
-      fi
-      FILE="${FILES[$IDX]}"
-      echo "Selected: $(basename "$FILE")"
-      read -p "Are you sure you want to delete? [y/N]: " DELCHOICE
-      if [[ "$DELCHOICE" =~ ^[Yy]$ ]]; then
-        TAG_TO_DEL=$(grep "^Tag:" "$FILE" | awk '{print $2}')
-        PORT_TO_DEL=$(grep "^Port:" "$FILE" | awk '{print $2}')
-        PRIV_TO_DEL=$(grep "^PrivateKeyFile:" "$FILE" | awk '{print $2}')
-        [ -z "$TAG_TO_DEL" ] && [ -n "$PORT_TO_DEL" ] && TAG_TO_DEL="reality-$PORT_TO_DEL"
-        if [ -f "$CONFIG" ] && [ -n "$TAG_TO_DEL" ]; then
-          TMPDEL=$(mktemp)
-          if jq --arg tag "$TAG_TO_DEL" '
-            if (.inbounds // null) then
-              .inbounds = [ (.inbounds[]? | select(.tag != $tag)) ]
-            else .
-            end
-          ' "$CONFIG" > "$TMPDEL"; then
-            mv "$TMPDEL" "$CONFIG"
-            echo "?o. Removed inbound with tag: $TAG_TO_DEL"
-          else
-            echo "??O Failed to update $CONFIG"
-            rm -f "$TMPDEL"
-          fi
-        else
-          echo "??O No valid tag found to delete."
-        fi
-        [ -n "$PRIV_TO_DEL" ] && [ -f "$PRIV_TO_DEL" ] && rm -f "$PRIV_TO_DEL"
-        rm -f "$FILE"
-        systemctl restart xray || true
-        echo "dYZ% Config deleted."
-      fi
-      sleep 1
-      continue
-      ;;
-    4)
-      firewall_menu
-      continue
-      ;;
-    5)
-      stats_api_menu
-      continue
-      ;;
-    6)
-      echo "Bye!"
-      exit 0
-      ;;
-    *)
-      echo "❌ Invalid option!"
-      sleep 1
-      continue
-      ;;
-  esac
-done
-
-# ---------- 🧱 Build New Inbound ----------
-read -p "🔢 Enter port number (e.g. 443): " PORT
-read -p "🌍 Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
-read -p "🕵️ Enter camouflage SNI (e.g. www.microsoft.com): " CAMO
-read -p "🏷 Enter tag name (default: reality-$PORT): " TAG
-TAG=${TAG:-reality-$PORT}
-
-clean_input() {
-  local value="$1"
-  echo "$value" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[[:space:]]//g' \
-          -e 's/–/-/g' -e 's/—/-/g' -e 's/−/-/g' \
-          -e 's/․/./g'
-}
-DOMAIN=$(clean_input "$DOMAIN")
-CAMO=$(clean_input "$CAMO")
-
-# Check ASCII
-if printf %s "$DOMAIN" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then err "❌ Domain contains non-ASCII characters."; fi
-if printf %s "$CAMO" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then err "❌ SNI contains non-ASCII characters."; fi
-
-# Validate format
-echo "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "❌ Invalid domain format"
-echo "$CAMO" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "❌ Invalid SNI format"
-
-# ---------- Step 2: Ensure deps ----------
-REQUIRED=(jq qrencode openssl curl)
-for pkg in "${REQUIRED[@]}"; do
-  if ! has "$pkg"; then
-    echo "➡️ Installing $pkg..."
-    apt update -y && apt install -y "$pkg"
+  echo "Available Loopa configs:"
+  mapfile -t FILES < <(list_config_files)
+  if [ ${#FILES[@]} -eq 0 ]; then
+    echo "No configs found yet."
+    read -rp "Press Enter to return..." _
+    return
   fi
-done
 
-# ---------- Step 3: Ensure Xray ----------
-if ! has xray; then
-  echo "⚙️ Installing Xray..."
-  bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install
-else
-  echo "✅ Xray already installed: $(xray -v | head -n 1)"
-fi
+  local i=1
+  for f in "${FILES[@]}"; do
+    echo "  $i) $(basename "$f")"
+    ((i++))
+  done
+  echo ""
+  read -rp "Select a config number: " NUM
+  local IDX=$((NUM-1))
+  if [ -z "${FILES[$IDX]:-}" ]; then
+    echo "Invalid choice."
+    sleep 1
+    return
+  fi
 
-# ---------- Step 4: Ensure config.json ----------
-echo "🧱 Ensuring config.json..."
-mkdir -p "$(dirname "$CONFIG")"
-if [ ! -f "$CONFIG" ]; then
-  cat > "$CONFIG" <<'JSON'
-{
-  "inbounds": [],
-  "outbounds": [
-    { "protocol": "freedom", "settings": {} }
-  ]
+  local FILE="${FILES[$IDX]}"
+  local LINK
+  LINK=$(grep -E '^(Reality Link|VLESS Link):' "$FILE" | sed -E 's/^[^:]+:[[:space:]]*//' | head -n1 || true)
+  if [ -z "$LINK" ]; then
+    LINK=$(grep -Eo 'vless://[^[:space:]]+' "$FILE" | head -n1 || true)
+  fi
+
+  clear
+  echo "Showing config: $(basename "$FILE")"
+  if [ -z "$LINK" ]; then
+    echo "No link found in file."
+  else
+    echo ""
+    echo "$LINK"
+    echo ""
+    if has qrencode; then
+      qrencode -t ansiutf8 "$LINK"
+    else
+      echo "qrencode is not installed."
+    fi
+  fi
+  echo ""
+  read -rp "Press Enter to return..." _
 }
-JSON
-else
-  if ! jq -e '.inbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {inbounds: []}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
-  if ! jq -e '.outbounds' "$CONFIG" >/dev/null 2>&1; then jq '. + {outbounds: [{protocol:"freedom",settings:{}}]}' "$CONFIG" > /tmp/x && mv /tmp/x "$CONFIG"; fi
-fi
 
-# ---------- Step 5: Generate keys ----------
-echo "🔐 Generating X25519 keypair..."
-XOUT=$(xray x25519 2>/dev/null || true)
-PRIV=$(echo "$XOUT" | awk -F': ' '/[Pp]rivate/ {print $2; exit}' | tr -d '\r\n')
-PUB=$(echo "$XOUT" | awk -F': ' '/Password|Public key|PublicKey/ {print $2; exit}' | tr -d '\r\n')
-[ -z "$PRIV" ] && err "❌ Failed to read private key!"
-SHORTID=$(openssl rand -hex 8)
-UUID=$(cat /proc/sys/kernel/random/uuid)
+delete_existing_config() {
+  clear
+  echo "Delete existing config"
+  mapfile -t FILES < <(list_config_files)
+  if [ ${#FILES[@]} -eq 0 ]; then
+    echo "No configs found yet."
+    sleep 1
+    return
+  fi
 
-PRIVFILE="/usr/local/etc/xray/reality-priv-${PORT}.key"
-echo -n "$PRIV" > "$PRIVFILE"
-chmod 600 "$PRIVFILE"
+  local i=1
+  for f in "${FILES[@]}"; do
+    echo "  $i) $(basename "$f")"
+    ((i++))
+  done
+  echo ""
+  read -rp "Select a config number to delete: " NUM
+  local IDX=$((NUM-1))
+  if [ -z "${FILES[$IDX]:-}" ]; then
+    echo "Invalid choice."
+    sleep 1
+    return
+  fi
 
-# ---------- Step 6: Add inbound ----------
-INBOUND=$(jq -n \
-  --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" \
-  --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" '
-  {
-    port: ($port|tonumber),
-    protocol: "vless",
-    tag: $tag,
-    settings: { clients: [{ id: $id }], decryption: "none" },
-    streamSettings: {
-      network: "tcp",
-      security: "reality",
-      realitySettings: {
-        privateKey: $priv,
-        shortIds: [$short],
-        serverNames: [$camo],
-        dest: ($camo + ":443"),
-        show: false,
-        spiderX: "/"
+  local FILE="${FILES[$IDX]}"
+  local TAG_TO_DEL PORT_TO_DEL PRIV_TO_DEL CLIENT_JSON
+  TAG_TO_DEL=$(awk -F': ' '/^Tag:/ {print $2; exit}' "$FILE")
+  PORT_TO_DEL=$(awk -F': ' '/^Port:/ {print $2; exit}' "$FILE")
+  PRIV_TO_DEL=$(awk -F': ' '/^PrivateKeyFile:/ {print $2; exit}' "$FILE")
+  CLIENT_JSON=$(awk -F': ' '/^ClientConfigFile:/ {print $2; exit}' "$FILE")
+
+  if [ -z "$TAG_TO_DEL" ] && [ -n "$PORT_TO_DEL" ]; then
+    case "$(basename "$FILE")" in
+      loopa-reality-*) TAG_TO_DEL="reality-$PORT_TO_DEL" ;;
+      loopa-vless-*) TAG_TO_DEL="vless-$PORT_TO_DEL" ;;
+    esac
+  fi
+
+  echo "Selected: $(basename "$FILE")"
+  read -rp "Are you sure? [y/N]: " DELCHOICE
+  if [[ ! "$DELCHOICE" =~ ^[Yy]$ ]]; then
+    return
+  fi
+
+  if [ -f "$CONFIG" ] && [ -n "$TAG_TO_DEL" ]; then
+    local TMPDEL
+    TMPDEL=$(mktemp)
+    if jq --arg tag "$TAG_TO_DEL" '
+      if (.inbounds // null) then
+        .inbounds = [ (.inbounds[]? | select(.tag != $tag)) ]
+      else .
+      end
+    ' "$CONFIG" > "$TMPDEL"; then
+      mv "$TMPDEL" "$CONFIG"
+      echo "Removed inbound with tag: $TAG_TO_DEL"
+      restart_xray || true
+    else
+      echo "Failed to update $CONFIG"
+      rm -f "$TMPDEL"
+    fi
+  else
+    echo "No valid tag found to delete."
+  fi
+
+  [ -n "${PRIV_TO_DEL:-}" ] && [ -f "$PRIV_TO_DEL" ] && rm -f "$PRIV_TO_DEL"
+  [ -n "${CLIENT_JSON:-}" ] && [ -f "$CLIENT_JSON" ] && rm -f "$CLIENT_JSON"
+  rm -f "$FILE"
+  echo "Config deleted."
+  sleep 1
+}
+
+create_reality_inbound() {
+  clear
+  echo "Create new Reality inbound"
+  read -rp "Enter port number (e.g. 443): " PORT
+  validate_port "$PORT"
+
+  read -rp "Enter your domain (e.g. vpn.loopa-vpn.com): " DOMAIN
+  read -rp "Enter camouflage SNI (e.g. www.microsoft.com): " CAMO
+  read -rp "Enter tag name (default: reality-$PORT): " TAG
+  TAG=${TAG:-reality-$PORT}
+
+  DOMAIN=$(clean_input "$DOMAIN")
+  CAMO=$(clean_input "$CAMO")
+  validate_domain "$DOMAIN"
+  validate_domain "$CAMO"
+
+  ensure_packages
+  ensure_xray
+  ensure_config
+  ensure_tag_port_free "$TAG" "$PORT"
+
+  echo "Generating X25519 keypair..."
+  XOUT=$(xray x25519 2>/dev/null || true)
+  PRIV=$(echo "$XOUT" | awk -F': ' '/[Pp]rivate/ {print $2; exit}' | tr -d '\r\n')
+  PUB=$(echo "$XOUT" | awk -F': ' '/Password|Public key|PublicKey/ {print $2; exit}' | tr -d '\r\n')
+  [ -z "$PRIV" ] && err "Failed to read private key."
+  SHORTID=$(openssl rand -hex 8)
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+
+  PRIVFILE="/usr/local/etc/xray/reality-priv-${PORT}.key"
+  echo -n "$PRIV" > "$PRIVFILE"
+  chmod 600 "$PRIVFILE"
+
+  INBOUND=$(jq -n \
+    --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" \
+    --arg priv "$PRIV" --arg short "$SHORTID" --arg camo "$CAMO" '
+    {
+      port: ($port|tonumber),
+      protocol: "vless",
+      tag: $tag,
+      settings: { clients: [{ id: $id }], decryption: "none" },
+      streamSettings: {
+        network: "tcp",
+        security: "reality",
+        realitySettings: {
+          privateKey: $priv,
+          shortIds: [$short],
+          serverNames: [$camo],
+          dest: ($camo + ":443"),
+          show: false,
+          spiderX: "/"
+        }
       }
-    }
-  }')
+    }')
 
-TMP=$(mktemp)
-jq ".inbounds += [ $INBOUND ]" "$CONFIG" > "$TMP" && mv "$TMP" "$CONFIG"
+  TMP=$(mktemp)
+  jq ".inbounds += [ $INBOUND ]" "$CONFIG" > "$TMP" && mv "$TMP" "$CONFIG"
 
-chmod 644 "$CONFIG"
-systemctl restart xray
-sleep 2
+  chmod 644 "$CONFIG"
+  restart_xray || err "xray service failed to start."
 
-LINK="vless://${UUID}@${DOMAIN}:${PORT}?security=reality&sni=${CAMO}&pbk=${PUB}&sid=${SHORTID}&fp=chrome&type=tcp#${TAG}"
+  LINK="vless://${UUID}@${DOMAIN}:${PORT}?security=reality&sni=${CAMO}&pbk=${PUB}&sid=${SHORTID}&fp=chrome&type=tcp#${TAG}"
+  INFO_FILE="$DATA_DIR/loopa-reality-${PORT}.txt"
 
-echo ""
-echo "🔗 VLESS REALITY LINK:"
-echo "$LINK"
-echo ""
-echo "📱 QR Code:"
-qrencode -t ansiutf8 "$LINK"
-
-cat > ~/loopa-reality-${PORT}.txt <<EOF
+  cat > "$INFO_FILE" <<EOF
 Tag: $TAG
 Port: $PORT
 Domain: $DOMAIN
@@ -571,8 +630,272 @@ ShortId: $SHORTID
 Reality Link: $LINK
 EOF
 
-echo ""
-echo "✅ Saved info to: ~/loopa-reality-${PORT}.txt"
-echo "🎉 Reality inbound created successfully!"
-read -p "Press Enter to return to main menu..." _
-exec "$0"
+  echo ""
+  echo "VLESS REALITY LINK:"
+  echo "$LINK"
+  echo ""
+  qrencode -t ansiutf8 "$LINK"
+  echo ""
+  echo "Saved info to: $INFO_FILE"
+  read -rp "Press Enter to return..." _
+}
+
+create_vless_tcp_inbound() {
+  clear
+  echo "Create new VLESS TCP inbound (security=none)"
+  read -rp "Enter port number (e.g. 443): " PORT
+  validate_port "$PORT"
+
+  read -rp "Enter tag name (default: vless-$PORT): " TAG
+  TAG=${TAG:-vless-$PORT}
+  read -rp "Enter UUID (leave empty to auto-generate): " UUID
+  UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid)}
+  read -rp "Enter link name (default: $TAG): " LINK_NAME
+  LINK_NAME=${LINK_NAME:-$TAG}
+  SAFE_LINK_NAME=$(encode_link_name "$LINK_NAME")
+
+  SERVER_ADDR=$(detect_public_ip || true)
+  [ -z "${SERVER_ADDR:-}" ] && err "Could not detect server public IPv4 address automatically."
+
+  ensure_packages
+  ensure_xray
+  ensure_config
+  ensure_tag_port_free "$TAG" "$PORT"
+
+  INBOUND=$(jq -n \
+    --arg port "$PORT" --arg tag "$TAG" --arg id "$UUID" '
+    {
+      port: ($port|tonumber),
+      listen: "0.0.0.0",
+      protocol: "vless",
+      tag: $tag,
+      settings: {
+        clients: [{ id: $id, level: 8 }],
+        decryption: "none"
+      },
+      streamSettings: {
+        network: "tcp",
+        security: "none",
+        tcpSettings: {
+          header: { type: "none" }
+        }
+      }
+    }')
+
+  TMP=$(mktemp)
+  jq ".inbounds += [ $INBOUND ]" "$CONFIG" > "$TMP" && mv "$TMP" "$CONFIG"
+
+  chmod 644 "$CONFIG"
+  restart_xray || err "xray service failed to start."
+
+  LINK="vless://${UUID}@${SERVER_ADDR}:${PORT}?encryption=none&security=none&type=tcp&headerType=none#${SAFE_LINK_NAME}"
+  INFO_FILE="$DATA_DIR/loopa-vless-${PORT}.txt"
+  CLIENT_JSON_FILE="$DATA_DIR/loopa-vless-client-${PORT}.json"
+
+  cat > "$CLIENT_JSON_FILE" <<EOF
+{
+  "log": {},
+  "inbounds": [
+    {
+      "settings": {
+        "udp": true,
+        "auth": "noauth",
+        "userLevel": 8
+      },
+      "tag": "socks",
+      "protocol": "socks",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["tls", "http", "quic"],
+        "domainsExcluded": ["courier.push.apple.com"]
+      },
+      "listen": "127.0.0.1",
+      "port": 57055
+    },
+    {
+      "settings": {
+        "udp": true,
+        "auth": "noauth",
+        "userLevel": 8
+      },
+      "tag": "directSocks",
+      "protocol": "socks",
+      "port": 1087,
+      "listen": "127.0.0.1"
+    },
+    {
+      "settings": {
+        "address": "[::1]"
+      },
+      "tag": "api",
+      "protocol": "dokodemo-door",
+      "port": 57056,
+      "listen": "[::1]"
+    }
+  ],
+  "outbounds": [
+    {
+      "settings": {
+        "vnext": [
+          {
+            "port": ${PORT},
+            "users": [
+              {
+                "level": 8,
+                "email": "",
+                "flow": "",
+                "id": "${UUID}",
+                "encryption": "none"
+              }
+            ],
+            "address": "${SERVER_ADDR}"
+          }
+        ]
+      },
+      "tag": "proxy",
+      "streamSettings": {
+        "network": "tcp",
+        "tcpSettings": {
+          "header": {
+            "type": "none"
+          }
+        }
+      },
+      "protocol": "vless",
+      "mux": {
+        "concurrency": 50,
+        "enabled": false,
+        "xudpConcurrency": 128,
+        "xudpProxyUDP443": "allow"
+      }
+    },
+    {
+      "protocol": "freedom",
+      "settings": {
+        "userLevel": 8,
+        "fragment": {
+          "length": "80-250",
+          "interval": "10-100",
+          "packets": "tlshello"
+        }
+      },
+      "tag": "fragment",
+      "streamSettings": {
+        "sockopt": {
+          "tcpNoDelay": true
+        }
+      }
+    },
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ],
+  "api": {
+    "services": ["StatsService"],
+    "tag": "api"
+  },
+  "dns": {
+    "disableCache": true,
+    "servers": [{ "skipFallback": false, "address": "8.8.8.8" }],
+    "disableFallbackIfMatch": true,
+    "hosts": {
+      "dns.cloudflare.com": ["104.16.132.229", "104.16.133.229", "2606:4700::6810:84e5", "2606:4700::6810:85e5"],
+      "dns.alidns.com": ["223.5.5.5", "223.6.6.6", "2400:3200::1", "2400:3200:baba::1"],
+      "cloudflare-dns.com": ["104.16.248.249", "104.16.249.249", "2606:4700::6810:f8f9", "2606:4700::6810:f9f9"],
+      "dot.pub": ["1.12.12.12", "120.53.53.53"],
+      "dns.quad9.net": ["9.9.9.9", "149.112.112.112", "2620:fe::fe", "2620:fe::9"],
+      "dns.google": ["8.8.8.8", "8.8.4.4", "2001:4860:4860::8888", "2001:4860:4860::8844"],
+      "one.one.one.one": ["1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"],
+      "common.dot.dns.yandex.net": ["77.88.8.8", "77.88.8.1", "2a02:6b8::feed:0ff", "2a02:6b8:0:1::feed:0ff"]
+    },
+    "disableFallback": true,
+    "queryStrategy": "UseIP",
+    "tag": "dnsQuery"
+  },
+  "stats": {},
+  "routing": {
+    "rules": [
+      { "type": "field", "inboundTag": ["api"], "outboundTag": "api" },
+      { "type": "field", "inboundTag": ["dnsQuery"], "outboundTag": "proxy" },
+      { "type": "field", "inboundTag": ["directSocks"], "outboundTag": "direct" }
+    ],
+    "balancers": [],
+    "domainStrategy": "AsIs"
+  },
+  "policy": {
+    "system": {
+      "statsOutboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsInboundUplink": true,
+      "statsOutboundDownlink": true
+    },
+    "levels": {
+      "8": {
+        "downlinkOnly": 1,
+        "statsUserDownlink": false,
+        "uplinkOnly": 1,
+        "bufferSize": 0,
+        "statsUserUplink": false,
+        "connIdle": 30,
+        "handshake": 4
+      }
+    }
+  },
+  "transport": {}
+}
+EOF
+
+  cat > "$INFO_FILE" <<EOF
+Tag: $TAG
+Port: $PORT
+Address: $SERVER_ADDR
+UUID: $UUID
+ClientConfigFile: $CLIENT_JSON_FILE
+VLESS Link: $LINK
+EOF
+
+  echo ""
+  echo "VLESS LINK:"
+  echo "$LINK"
+  echo ""
+  qrencode -t ansiutf8 "$LINK"
+  echo ""
+  echo "Saved info to: $INFO_FILE"
+  echo "Saved client JSON to: $CLIENT_JSON_FILE"
+  read -rp "Press Enter to return..." _
+}
+
+main_menu() {
+  while true; do
+    clear
+    echo "Loopa Xray Wizard (v5.0)"
+    echo "========================"
+    echo "1) Create new Reality inbound"
+    echo "2) Create new VLESS TCP inbound (no TLS)"
+    echo "3) Show existing configs (list + QR)"
+    echo "4) Delete existing configs"
+    echo "5) Firewall (ufw)"
+    echo "6) Stats API (CPU/RAM/Load)"
+    echo "7) Exit"
+    read -rp "Select an option [1-7]: " CHOICE
+
+    case $CHOICE in
+      1) create_reality_inbound ;;
+      2) create_vless_tcp_inbound ;;
+      3) show_existing_configs ;;
+      4) delete_existing_config ;;
+      5) firewall_menu ;;
+      6) stats_api_menu ;;
+      7) echo "Bye!"; exit 0 ;;
+      *)
+        echo "Invalid option."
+        sleep 1
+        ;;
+    esac
+  done
+}
+
+require_root
+main_menu
