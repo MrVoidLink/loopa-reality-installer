@@ -38,6 +38,24 @@ validate_domain() {
   echo "$value" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || err "Invalid domain format: $value"
 }
 
+validate_ipv4() {
+  local value="$1"
+  local o1 o2 o3 o4 octet
+  [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  IFS='.' read -r o1 o2 o3 o4 <<< "$value"
+  for octet in "$o1" "$o2" "$o3" "$o4"; do
+    [[ "$octet" =~ ^[0-9]+$ ]] || return 1
+    (( octet >= 0 && octet <= 255 )) || return 1
+  done
+  return 0
+}
+
+validate_host_or_ip() {
+  local value="$1"
+  validate_ipv4 "$value" && return 0
+  validate_domain "$value"
+}
+
 detect_public_ip() {
   local ip=""
 
@@ -132,6 +150,11 @@ JSON
 tag_exists() {
   local tag="$1"
   jq -e --arg tag "$tag" '.inbounds[]? | select((.tag // "") == $tag)' "$CONFIG" >/dev/null 2>&1
+}
+
+outbound_tag_exists() {
+  local tag="$1"
+  jq -e --arg tag "$tag" '.outbounds[]? | select((.tag // "") == $tag)' "$CONFIG" >/dev/null 2>&1
 }
 
 port_exists() {

@@ -7,9 +7,11 @@ collect_loopa_artifact_files() {
     "$DATA_DIR"/loopa-reality-*.txt
     "$DATA_DIR"/loopa-vless-*.txt
     "$DATA_DIR"/loopa-vless-client-*.json
+    "$DATA_DIR"/loopa-foreign-setup-*.sh
     /root/loopa-reality-*.txt
     /root/loopa-vless-*.txt
     /root/loopa-vless-client-*.json
+    /root/loopa-foreign-setup-*.sh
   )
 
   for home_dir in /home/*; do
@@ -18,6 +20,7 @@ collect_loopa_artifact_files() {
       "$home_dir"/loopa-reality-*.txt
       "$home_dir"/loopa-vless-*.txt
       "$home_dir"/loopa-vless-client-*.json
+      "$home_dir"/loopa-foreign-setup-*.sh
     )
   done
 

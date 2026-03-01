@@ -80,15 +80,18 @@ delete_existing_config() {
   fi
 
   local FILE="${FILES[$IDX]}"
-  local TAG_TO_DEL PORT_TO_DEL PRIV_TO_DEL CLIENT_JSON
+  local TAG_TO_DEL PORT_TO_DEL PRIV_TO_DEL CLIENT_JSON OUTBOUND_TO_DEL FOREIGN_SETUP_SCRIPT
   TAG_TO_DEL=$(awk -F': ' '/^Tag:/ {print $2; exit}' "$FILE")
   PORT_TO_DEL=$(awk -F': ' '/^Port:/ {print $2; exit}' "$FILE")
   PRIV_TO_DEL=$(awk -F': ' '/^PrivateKeyFile:/ {print $2; exit}' "$FILE")
   CLIENT_JSON=$(awk -F': ' '/^ClientConfigFile:/ {print $2; exit}' "$FILE")
+  OUTBOUND_TO_DEL=$(awk -F': ' '/^OutboundTag:/ {print $2; exit}' "$FILE")
+  FOREIGN_SETUP_SCRIPT=$(awk -F': ' '/^ForeignSetupScript:/ {print $2; exit}' "$FILE")
 
   if [ -z "$TAG_TO_DEL" ] && [ -n "$PORT_TO_DEL" ]; then
     case "$(basename "$FILE")" in
       loopa-reality-*) TAG_TO_DEL="reality-$PORT_TO_DEL" ;;
+      loopa-vless-2hop-*) TAG_TO_DEL="vless2hop-$PORT_TO_DEL" ;;
       loopa-vless-*) TAG_TO_DEL="vless-$PORT_TO_DEL" ;;
     esac
   fi
@@ -102,14 +105,28 @@ delete_existing_config() {
   if [ -f "$CONFIG" ] && [ -n "$TAG_TO_DEL" ]; then
     local TMPDEL
     TMPDEL=$(mktemp)
-    if jq --arg tag "$TAG_TO_DEL" '
+    if jq --arg tag "$TAG_TO_DEL" --arg outtag "${OUTBOUND_TO_DEL:-}" '
       if (.inbounds // null) then
         .inbounds = [ (.inbounds[]? | select(.tag != $tag)) ]
       else .
       end
+      | if ($outtag != "" and (.outbounds // null)) then
+          .outbounds = [ (.outbounds[]? | select((.tag // "") != $outtag)) ]
+        else .
+        end
+      | if (.routing.rules // null) then
+          .routing.rules = [
+            (.routing.rules[]?
+              | select(($outtag == "" or ((.outboundTag // "") != $outtag)))
+              | select((((.inboundTag // []) | index($tag)) | not))
+            )
+          ]
+        else .
+        end
     ' "$CONFIG" > "$TMPDEL"; then
       mv "$TMPDEL" "$CONFIG"
       echo "Removed inbound with tag: $TAG_TO_DEL"
+      [ -n "${OUTBOUND_TO_DEL:-}" ] && echo "Removed outbound with tag: $OUTBOUND_TO_DEL"
       restart_xray || true
     else
       echo "Failed to update $CONFIG"
@@ -121,6 +138,7 @@ delete_existing_config() {
 
   [ -n "${PRIV_TO_DEL:-}" ] && [ -f "$PRIV_TO_DEL" ] && rm -f "$PRIV_TO_DEL"
   [ -n "${CLIENT_JSON:-}" ] && [ -f "$CLIENT_JSON" ] && rm -f "$CLIENT_JSON"
+  [ -n "${FOREIGN_SETUP_SCRIPT:-}" ] && [ -f "$FOREIGN_SETUP_SCRIPT" ] && rm -f "$FOREIGN_SETUP_SCRIPT"
   rm -f "$FILE"
   echo "Config deleted."
   sleep 1
