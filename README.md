@@ -21,6 +21,7 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 - Restarts `xray` safely
 - Shows VLESS link + QR code
 - Saves config summary files
+- Includes full uninstall cleanup flow
 
 ## Menu
 1. Create new Reality inbound
@@ -30,6 +31,7 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 5. Firewall (ufw)
 6. Stats API (CPU/RAM/Load)
 7. Exit
+8. Uninstall Loopa/Xray (full cleanup)
 
 ## New VLESS (no TLS) Option
 When you choose option `2`, the wizard asks:
@@ -66,3 +68,12 @@ Output file:
 - Main script: `xray-Reality/loopa-reality.sh`
 - Modules: `xray-Reality/lib/` and `xray-Reality/features/`
 - Uninstall helper: `xray-Reality/loopa-uninstall.sh`
+
+## Full Uninstall
+You can run uninstall in two ways:
+- From wizard option `8`
+- Directly:
+
+```bash
+sudo bash ./loopa-uninstall.sh
+```
