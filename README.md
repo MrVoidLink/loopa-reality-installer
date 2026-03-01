@@ -8,7 +8,7 @@ Interactive installer/manager for Xray with two inbound types:
 Run as `root` on Ubuntu/Debian:
 
 ```bash
-bash -c 'set -e; TMP_DIR="$(mktemp -d)"; curl -fsSL https://github.com/MrVoidLink/loopa-reality-installer/archive/refs/heads/main.tar.gz | tar -xz -C "$TMP_DIR"; cd "$TMP_DIR/loopa-reality-installer-main/xray-Reality"; bash ./loopa-reality.sh'
+bash -c 'set -e; TMP_DIR="$(mktemp -d)"; curl -fsSL https://github.com/MrVoidLink/loopa-reality-installer/archive/refs/heads/main.tar.gz | tar -xz -C "$TMP_DIR"; SCRIPT_PATH="$(find "$TMP_DIR" -type f -name loopa-reality.sh | head -n1)"; [ -n "$SCRIPT_PATH" ] || { echo "loopa-reality.sh not found in archive"; exit 1; }; cd "$(dirname "$SCRIPT_PATH")"; bash ./loopa-reality.sh'
 ```
 
 Why this command: the installer is now modular and loads `lib/` and `features/`, so it must run from the project folder, not as a single raw script.
