@@ -30,12 +30,13 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 2. Create new VLESS TCP inbound (no TLS)
 3. Create new VLESS TCP 2-Hop (IRAN -> FOREIGN, no TLS)
 4. Create new VLESS WebSocket inbound (no TLS)
-5. Show existing configs (list + QR)
-6. Delete existing configs
-7. Firewall (ufw)
-8. Stats API (CPU/RAM/Load)
-9. Exit
-10. Uninstall Loopa/Xray (full cleanup)
+5. Create new VLESS WebSocket fronted profile (seller-01 style)
+6. Show existing configs (list + QR)
+7. Delete existing configs
+8. Firewall (ufw)
+9. Stats API (CPU/RAM/Load)
+10. Exit
+11. Uninstall Loopa/Xray (full cleanup)
 
 ## New VLESS (no TLS) Option
 When you choose option `2`, the wizard asks:
@@ -73,6 +74,27 @@ Generated files:
 
 Important behavior:
 - If the client link address is different from the real server IP/domain, you must place a reverse proxy/CDN/fronting layer in front of Xray so that WebSocket traffic reaches this inbound.
+
+## New VLESS WebSocket Fronted Profile
+When you choose option `5`, the wizard asks:
+- `Port`
+- `Front address/domain` for the client link
+- `Link name`
+
+What it configures:
+- Creates a VLESS inbound with `network=ws` and `security=none`
+- Uses fixed WebSocket host `vip.proyaar.ir`
+- Uses fixed WebSocket path `/`
+- Auto-generates `Tag` as `vless-ws-fronted-PORT`
+- Auto-generates `UUID`
+- Generates a client link similar to seller-01 style where link address and WebSocket host are intentionally different
+
+Generated files:
+- `~/loopa-vless-fronted-PORT.txt`
+- `~/loopa-vless-fronted-client-PORT.json`
+
+Important behavior:
+- The front address/domain must actually route traffic to this server. If it does not, this profile will not work.
 
 ## VLESS 2-Hop Option
 When you choose option `3`, the wizard asks:
@@ -121,7 +143,7 @@ Output file:
 
 ## Full Uninstall
 You can run uninstall in two ways:
-- From wizard option `10`
+- From wizard option `11`
 - Directly:
 
 ```bash
