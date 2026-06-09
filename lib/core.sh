@@ -110,6 +110,11 @@ encode_link_name() {
   echo "${name// /%20}"
 }
 
+urlencode_component() {
+  local value="$1"
+  jq -nr --arg v "$value" '$v|@uri'
+}
+
 ensure_packages() {
   local required=(jq qrencode openssl curl)
   for pkg in "${required[@]}"; do

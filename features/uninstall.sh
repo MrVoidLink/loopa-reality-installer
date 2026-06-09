@@ -7,10 +7,12 @@ collect_loopa_artifact_files() {
     "$DATA_DIR"/loopa-reality-*.txt
     "$DATA_DIR"/loopa-vless-*.txt
     "$DATA_DIR"/loopa-vless-client-*.json
+    "$DATA_DIR"/loopa-vless-ws-client-*.json
     "$DATA_DIR"/loopa-foreign-setup-*.sh
     /root/loopa-reality-*.txt
     /root/loopa-vless-*.txt
     /root/loopa-vless-client-*.json
+    /root/loopa-vless-ws-client-*.json
     /root/loopa-foreign-setup-*.sh
   )
 
@@ -20,6 +22,7 @@ collect_loopa_artifact_files() {
       "$home_dir"/loopa-reality-*.txt
       "$home_dir"/loopa-vless-*.txt
       "$home_dir"/loopa-vless-client-*.json
+      "$home_dir"/loopa-vless-ws-client-*.json
       "$home_dir"/loopa-foreign-setup-*.sh
     )
   done
@@ -33,7 +36,7 @@ collect_loopa_artifact_files() {
 
 collect_loopa_inbound_ports() {
   local files=()
-  mapfile -t files < <(collect_loopa_artifact_files | grep -E 'loopa-(reality|vless)-[0-9]+\.txt$' || true)
+  mapfile -t files < <(collect_loopa_artifact_files | grep -E 'loopa-(reality|vless(-[a-z0-9]+)*)-[0-9]+\.txt$' || true)
   if [ ${#files[@]} -eq 0 ]; then
     return 0
   fi

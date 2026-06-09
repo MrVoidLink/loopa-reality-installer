@@ -3,6 +3,7 @@
 Interactive installer/manager for Xray with these connection modes:
 - `VLESS + TCP + REALITY`
 - `VLESS + TCP + security=none` (no TLS)
+- `VLESS + WebSocket + security=none` (no TLS)
 - `VLESS + TCP + security=none` 2-Hop (`IRAN -> FOREIGN`)
 
 ## Quick Install
@@ -28,12 +29,13 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 1. Create new Reality inbound
 2. Create new VLESS TCP inbound (no TLS)
 3. Create new VLESS TCP 2-Hop (IRAN -> FOREIGN, no TLS)
-4. Show existing configs (list + QR)
-5. Delete existing configs
-6. Firewall (ufw)
-7. Stats API (CPU/RAM/Load)
-8. Exit
-9. Uninstall Loopa/Xray (full cleanup)
+4. Create new VLESS WebSocket inbound (no TLS)
+5. Show existing configs (list + QR)
+6. Delete existing configs
+7. Firewall (ufw)
+8. Stats API (CPU/RAM/Load)
+9. Exit
+10. Uninstall Loopa/Xray (full cleanup)
 
 ## New VLESS (no TLS) Option
 When you choose option `2`, the wizard asks:
@@ -49,6 +51,28 @@ Important behavior:
 Output files:
 - `~/loopa-vless-PORT.txt` (summary + link)
 - `~/loopa-vless-client-PORT.json` (client config template)
+
+## New VLESS WebSocket (no TLS) Option
+When you choose option `4`, the wizard asks:
+- `Port`
+- `Public host/IP` for the client link
+- `WebSocket host header` (default `vip.proyaar.ir`)
+- `Link name`
+
+What it configures:
+- Creates a VLESS inbound with `network=ws` and `security=none`
+- Generates a client link with `type=ws`, `host`, and `path`
+- Saves a matching client JSON template
+- Auto-generates `Tag` as `vless-ws-PORT`
+- Auto-generates `UUID`
+- Uses fixed WebSocket path `/`
+
+Generated files:
+- `~/loopa-vless-ws-PORT.txt`
+- `~/loopa-vless-ws-client-PORT.json`
+
+Important behavior:
+- If the client link address is different from the real server IP/domain, you must place a reverse proxy/CDN/fronting layer in front of Xray so that WebSocket traffic reaches this inbound.
 
 ## VLESS 2-Hop Option
 When you choose option `3`, the wizard asks:
@@ -97,7 +121,7 @@ Output file:
 
 ## Full Uninstall
 You can run uninstall in two ways:
-- From wizard option `9`
+- From wizard option `10`
 - Directly:
 
 ```bash
