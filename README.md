@@ -79,15 +79,16 @@ Important behavior:
 When you choose option `5`, the wizard asks:
 - `Port`
 - `Front address/domain` for the client link
+- `WebSocket host header`
 - `Link name`
 
 What it configures:
 - Creates a VLESS inbound with `network=ws` and `security=none`
-- Uses fixed WebSocket host `vip.proyaar.ir`
+- Uses a separate WebSocket host that can be different from the front address/domain
 - Uses fixed WebSocket path `/`
 - Auto-generates `Tag` as `vless-ws-fronted-PORT`
 - Auto-generates `UUID`
-- Generates a client link similar to seller-01 style where link address and WebSocket host are intentionally different
+- Generates a client link where link address and WebSocket host can be intentionally different
 
 Generated files:
 - `~/loopa-vless-fronted-PORT.txt`

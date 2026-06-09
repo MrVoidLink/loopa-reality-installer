@@ -14,7 +14,11 @@ create_vless_ws_fronted_profile() {
   FRONT_ADDR=$(clean_input "$FRONT_ADDR")
   validate_host_or_ip "$FRONT_ADDR"
 
-  WS_HOST="vip.proyaar.ir"
+  read -rp "Enter WebSocket host header [same as front address/domain]: " WS_HOST
+  WS_HOST=${WS_HOST:-$FRONT_ADDR}
+  WS_HOST=$(clean_input "$WS_HOST")
+  validate_host_or_ip "$WS_HOST"
+
   WS_PATH="/"
 
   read -rp "Enter link name (default: $TAG): " LINK_NAME
@@ -295,7 +299,7 @@ EOF
   echo ""
   echo "Auto-generated tag: $TAG"
   echo "Auto-generated UUID: $UUID"
-  echo "Fixed WebSocket host: $WS_HOST"
+  echo "WebSocket host: $WS_HOST"
   echo "Fixed WebSocket path: $WS_PATH"
   echo ""
   echo "Important: the front address/domain must route traffic to this server."
