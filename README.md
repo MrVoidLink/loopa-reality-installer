@@ -31,12 +31,13 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 3. Create new VLESS TCP 2-Hop (IRAN -> FOREIGN, no TLS)
 4. Create new VLESS WebSocket inbound (no TLS)
 5. Create new VLESS WebSocket fronted profile (seller-01 style)
-6. Show existing configs (list + QR)
-7. Delete existing configs
-8. Firewall (ufw)
-9. Stats API (CPU/RAM/Load)
-10. Exit
-11. Uninstall Loopa/Xray (full cleanup)
+6. Create new VLESS WebSocket TLS fronted profile (seller-02 style)
+7. Show existing configs (list + QR)
+8. Delete existing configs
+9. Firewall (ufw)
+10. Stats API (CPU/RAM/Load)
+11. Exit
+12. Uninstall Loopa/Xray (full cleanup)
 
 ## New VLESS (no TLS) Option
 When you choose option `2`, the wizard asks:
@@ -96,6 +97,33 @@ Generated files:
 
 Important behavior:
 - The front address/domain must actually route traffic to this server. If it does not, this profile will not work.
+
+## New VLESS WebSocket TLS Fronted Profile
+When you choose option `6`, the wizard asks:
+- `Port` (default `443`)
+- `Front address/IP` for the client link
+- `TLS domain / SNI`
+- `WebSocket host header` (default: same as TLS domain)
+- `Link name`
+
+What it configures:
+- Creates a VLESS inbound with `network=ws` and `security=tls`
+- Uses a front address/IP for the link and a separate TLS domain/SNI
+- Uses a configurable WebSocket host
+- Auto-generates a random seller-style WebSocket path
+- Automatically uses standard Let's Encrypt certificate files for the TLS domain
+- Auto-generates `Tag` as `vless-ws-tls-fronted-PORT`
+- Auto-generates `UUID`
+- Generates a client link with `security=tls`, `host`, `path`, and `sni`
+
+Generated files:
+- `~/loopa-vless-ws-tls-fronted-PORT.txt`
+- `~/loopa-vless-ws-tls-fronted-client-PORT.json`
+
+Important behavior:
+- The front address/IP must actually route traffic to this server.
+- The TLS certificate must be valid for the TLS domain / SNI.
+- If another service is already using the selected port, this profile will not work.
 
 ## VLESS 2-Hop Option
 When you choose option `3`, the wizard asks:
