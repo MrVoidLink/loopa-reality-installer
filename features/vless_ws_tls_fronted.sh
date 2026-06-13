@@ -11,17 +11,6 @@ generate_vless_ws_tls_fronted_path() {
   printf '/l/w/%s?ed=2047' "$token"
 }
 
-resolve_tls_cert_pair() {
-  local domain="$1"
-  local cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
-  local key_file="/etc/letsencrypt/live/${domain}/privkey.pem"
-
-  [ -f "$cert_file" ] || err "TLS certificate file not found: $cert_file"
-  [ -f "$key_file" ] || err "TLS private key file not found: $key_file"
-
-  printf '%s\n%s\n' "$cert_file" "$key_file"
-}
-
 create_vless_ws_tls_fronted_profile() {
   clear
   echo "Create new VLESS WebSocket TLS fronted profile (seller-02 style)"
@@ -54,9 +43,10 @@ create_vless_ws_tls_fronted_profile() {
 
   WS_PATH=$(generate_vless_ws_tls_fronted_path)
 
-  mapfile -t TLS_CERT_PAIR < <(resolve_tls_cert_pair "$TLS_DOMAIN")
-  CERT_FILE="${TLS_CERT_PAIR[0]}"
-  KEY_FILE="${TLS_CERT_PAIR[1]}"
+  CERT_FILE="/etc/letsencrypt/live/${TLS_DOMAIN}/fullchain.pem"
+  KEY_FILE="/etc/letsencrypt/live/${TLS_DOMAIN}/privkey.pem"
+  [ -f "$CERT_FILE" ] || err "TLS certificate file not found: $CERT_FILE"
+  [ -f "$KEY_FILE" ] || err "TLS private key file not found: $KEY_FILE"
 
   read -rp "Enter link name (default: $TAG): " LINK_NAME
   LINK_NAME=${LINK_NAME:-$TAG}
