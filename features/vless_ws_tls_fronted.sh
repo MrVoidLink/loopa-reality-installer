@@ -11,6 +11,27 @@ generate_vless_ws_tls_fronted_path() {
   printf '/l/w/%s?ed=2047' "$token"
 }
 
+prepare_xray_tls_files() {
+  local tag="$1"
+  local source_cert="$2"
+  local source_key="$3"
+  local xray_group
+  local tls_dir
+  local target_cert
+  local target_key
+
+  xray_group="$(id -gn nobody 2>/dev/null || printf 'nogroup')"
+  tls_dir="/usr/local/etc/xray/tls/${tag}"
+  target_cert="${tls_dir}/fullchain.pem"
+  target_key="${tls_dir}/privkey.pem"
+
+  install -d -m 750 -o root -g "$xray_group" "$tls_dir"
+  install -m 640 -o root -g "$xray_group" "$source_cert" "$target_cert"
+  install -m 640 -o root -g "$xray_group" "$source_key" "$target_key"
+
+  printf '%s\n%s\n' "$target_cert" "$target_key"
+}
+
 create_vless_ws_tls_fronted_profile() {
   clear
   echo "Create new VLESS WebSocket TLS fronted profile (seller-02 style)"
@@ -47,6 +68,9 @@ create_vless_ws_tls_fronted_profile() {
   KEY_FILE="/etc/letsencrypt/live/${TLS_DOMAIN}/privkey.pem"
   [ -f "$CERT_FILE" ] || err "TLS certificate file not found: $CERT_FILE"
   [ -f "$KEY_FILE" ] || err "TLS private key file not found: $KEY_FILE"
+  mapfile -t XRAY_TLS_PAIR < <(prepare_xray_tls_files "$TAG" "$CERT_FILE" "$KEY_FILE")
+  XRAY_CERT_FILE="${XRAY_TLS_PAIR[0]}"
+  XRAY_KEY_FILE="${XRAY_TLS_PAIR[1]}"
 
   read -rp "Enter link name (default: $TAG): " LINK_NAME
   LINK_NAME=${LINK_NAME:-$TAG}
@@ -62,8 +86,8 @@ create_vless_ws_tls_fronted_profile() {
     --arg id "$UUID" \
     --arg path "$WS_PATH" \
     --arg host "$WS_HOST" \
-    --arg cert "$CERT_FILE" \
-    --arg key "$KEY_FILE" '
+    --arg cert "$XRAY_CERT_FILE" \
+    --arg key "$XRAY_KEY_FILE" '
     {
       port: ($port|tonumber),
       listen: "0.0.0.0",
@@ -322,8 +346,10 @@ FrontAddress: $FRONT_ADDR
 TLSDomain: $TLS_DOMAIN
 WebSocketHost: $WS_HOST
 WebSocketPath: $WS_PATH
-CertificateFile: $CERT_FILE
-PrivateKeyFile: $KEY_FILE
+SourceCertificateFile: $CERT_FILE
+SourcePrivateKeyFile: $KEY_FILE
+XrayCertificateFile: $XRAY_CERT_FILE
+XrayPrivateKeyFile: $XRAY_KEY_FILE
 UUID: $UUID
 ClientConfigFile: $CLIENT_JSON_FILE
 VLESS Link: $LINK
@@ -341,8 +367,10 @@ EOF
   echo "Auto-generated tag: $TAG"
   echo "Auto-generated UUID: $UUID"
   echo "TLS domain / SNI: $TLS_DOMAIN"
-  echo "TLS certificate: $CERT_FILE"
-  echo "TLS private key: $KEY_FILE"
+  echo "TLS certificate source: $CERT_FILE"
+  echo "TLS private key source: $KEY_FILE"
+  echo "Xray TLS certificate: $XRAY_CERT_FILE"
+  echo "Xray TLS private key: $XRAY_KEY_FILE"
   echo "WebSocket host: $WS_HOST"
   echo "WebSocket path: $WS_PATH"
   echo ""
