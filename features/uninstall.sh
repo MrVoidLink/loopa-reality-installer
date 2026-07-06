@@ -58,10 +58,13 @@ collect_xray_config_ports() {
 
 stop_loopa_services() {
   systemctl disable --now "$STATS_SERVICE_NAME" >/dev/null 2>&1 || true
+  systemctl disable --now "$CONN_STATS_ROTATE_TIMER_NAME" >/dev/null 2>&1 || true
+  systemctl disable --now "$CONN_STATS_ROTATE_SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl stop xray >/dev/null 2>&1 || true
   systemctl disable xray >/dev/null 2>&1 || true
   pkill -9 xray 2>/dev/null || true
   pkill -f "$STATS_SCRIPT" 2>/dev/null || true
+  pkill -f "$CONN_STATS_SCRIPT" 2>/dev/null || true
 }
 
 remove_ufw_rules_for_port() {
@@ -138,6 +141,12 @@ remove_loopa_system_paths() {
     "$STATS_SERVICE"
     "$STATS_SCRIPT"
     "/etc/systemd/system/multi-user.target.wants/${STATS_SERVICE_NAME}.service"
+    "$CONN_STATS_SCRIPT"
+    "$CONN_STATS_LOGROTATE"
+    "$CONN_STATS_ROTATE_SERVICE"
+    "$CONN_STATS_ROTATE_TIMER"
+    "$CONN_STATS_LOGROTATE_STATE"
+    "/etc/systemd/system/timers.target.wants/${CONN_STATS_ROTATE_TIMER_NAME}"
   )
   local path
 
@@ -173,6 +182,7 @@ uninstall_loopa_xray() {
   echo " - Xray service and files"
   echo " - Loopa-generated config files and client JSON files"
   echo " - Loopa Stats API service/script"
+  echo " - Loopa connection stats script and hourly log rotation"
   echo " - Matching UFW rules for Loopa/Xray ports"
   echo
   read -rp "Type UNINSTALL to continue: " CONFIRM

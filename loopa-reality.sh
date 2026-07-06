@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/core.sh"
 source "$SCRIPT_DIR/features/firewall.sh"
 source "$SCRIPT_DIR/features/stats_api.sh"
+source "$SCRIPT_DIR/features/connection_stats.sh"
 source "$SCRIPT_DIR/features/config_manage.sh"
 source "$SCRIPT_DIR/features/reality.sh"
 source "$SCRIPT_DIR/features/vless_single.sh"
@@ -30,9 +31,10 @@ main_menu() {
     echo "8) Delete existing configs"
     echo "9) Firewall (ufw)"
     echo "10) Stats API (CPU/RAM/Load)"
-    echo "11) Exit"
-    echo "12) Uninstall Loopa/Xray (full cleanup)"
-    read -rp "Select an option [1-12]: " CHOICE
+    echo "11) Connection stats (IPs now / 10m / 1h / 24h)"
+    echo "12) Exit"
+    echo "13) Uninstall Loopa/Xray (full cleanup)"
+    read -rp "Select an option [1-13]: " CHOICE
 
     case $CHOICE in
       1) create_reality_inbound ;;
@@ -45,8 +47,9 @@ main_menu() {
       8) delete_existing_config ;;
       9) firewall_menu ;;
       10) stats_api_menu ;;
-      11) echo "Bye!"; exit 0 ;;
-      12) uninstall_loopa_xray ;;
+      11) connection_stats_menu ;;
+      12) echo "Bye!"; exit 0 ;;
+      13) uninstall_loopa_xray ;;
       *)
         echo "Invalid option."
         sleep 1

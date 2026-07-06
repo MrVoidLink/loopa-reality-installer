@@ -36,8 +36,24 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 8. Delete existing configs
 9. Firewall (ufw)
 10. Stats API (CPU/RAM/Load)
-11. Exit
-12. Uninstall Loopa/Xray (full cleanup)
+11. Connection stats (IPs now / 10m / 1h / 24h)
+12. Exit
+13. Uninstall Loopa/Xray (full cleanup)
+
+## Connection Stats Option
+When you choose option `11`, the wizard can:
+- enable real Xray access logging to `/var/log/xray/access.log`
+- keep only the last `24` hourly log files
+- show `unique client IPs` for:
+  - `Active Now`
+  - `Last 10 Minutes`
+  - `Last 1 Hour`
+  - `Last 24 Hours`
+
+Important behavior:
+- the report lists unique IPs, not TCP sessions
+- `Active Now` comes from live connections
+- the time-based windows come from Xray access logs
 
 ## New VLESS (no TLS) Option
 When you choose option `2`, the wizard asks:
@@ -172,7 +188,7 @@ Output file:
 
 ## Full Uninstall
 You can run uninstall in two ways:
-- From wizard option `11`
+- From wizard option `13`
 - Directly:
 
 ```bash
