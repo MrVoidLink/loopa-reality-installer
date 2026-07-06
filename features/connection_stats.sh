@@ -82,22 +82,18 @@ SOURCE_RE = re.compile(r"(?:tcp:|udp:)?((?:\d{1,3}\.){3}\d{1,3}):\d+")
 
 def load_inbounds():
     if not CONFIG_PATH.exists():
-        return set(), set()
+        return set()
     try:
         payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception:
-        return set(), set()
+        return set()
 
     ports = set()
-    tags = set()
     for inbound in payload.get("inbounds", []):
         port = inbound.get("port")
-        tag = inbound.get("tag")
         if isinstance(port, int):
             ports.add(port)
-        if isinstance(tag, str) and tag:
-            tags.add(tag)
-    return ports, tags
+    return ports
 
 
 def normalize_endpoint(endpoint):
@@ -158,11 +154,9 @@ def current_connected_ips(ports):
     return sorted(ips, key=safe_ip_sort)
 
 
-def read_access_events(tags):
+def read_access_events():
     if not ACCESS_LOG_PATH.exists():
         return []
-
-    tag_tokens = tuple(f"[{tag}]" for tag in tags if tag)
     events = []
 
     with ACCESS_LOG_PATH.open("r", encoding="utf-8", errors="ignore") as handle:
@@ -172,9 +166,6 @@ def read_access_events(tags):
 
             ts_match = TIMESTAMP_RE.match(line)
             if not ts_match:
-                continue
-
-            if tag_tokens and not any(token in line for token in tag_tokens):
                 continue
 
             try:
@@ -211,9 +202,9 @@ def print_section(title, ips):
 
 
 def main():
-    ports, tags = load_inbounds()
+    ports = load_inbounds()
     active_ips = current_connected_ips(ports)
-    access_events = read_access_events(tags)
+    access_events = read_access_events()
 
     print_section("Active Now", active_ips)
     print_section("Last 10 Minutes", unique_ips_since(access_events, timedelta(minutes=10)))
