@@ -19,6 +19,16 @@ CONN_STATS_ROTATE_SERVICE_NAME="loopa-xray-logrotate.service"
 CONN_STATS_ROTATE_TIMER="/etc/systemd/system/loopa-xray-logrotate.timer"
 CONN_STATS_ROTATE_TIMER_NAME="loopa-xray-logrotate.timer"
 XRAY_INSTALL_URL="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
+MTPROXY_REPO_URL="https://github.com/TelegramMessenger/MTProxy.git"
+MTPROXY_SRC_DIR="/opt/MTProxy-src"
+MTPROXY_WORK_DIR="/opt/MTProxy"
+MTPROXY_BIN="$MTPROXY_WORK_DIR/mtproto-proxy"
+MTPROXY_SECRET_FILE="$MTPROXY_WORK_DIR/proxy-secret"
+MTPROXY_CONFIG_FILE="$MTPROXY_WORK_DIR/proxy-multi.conf"
+MTPROXY_ENV_FILE="/etc/loopa-mtproxy.env"
+MTPROXY_SERVICE="/etc/systemd/system/loopa-mtproxy.service"
+MTPROXY_SERVICE_NAME="loopa-mtproxy"
+MTPROXY_INFO_FILE="$DATA_DIR/loopa-mtproxy.txt"
 
 err() { echo "ERROR: $*" >&2; exit 1; }
 has() { command -v "$1" >/dev/null 2>&1; }
@@ -192,4 +202,9 @@ restart_xray() {
   systemctl restart xray
   sleep 1
   systemctl is-active --quiet xray
+}
+
+port_listening() {
+  local port="$1"
+  ss -Hltn "sport = :$port" 2>/dev/null | grep -q .
 }

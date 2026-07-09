@@ -1,6 +1,10 @@
-# Loopa Xray Installer (v5.0)
+# Loopa Server Installer (v6.0)
 
-Interactive installer/manager for Xray with these connection modes:
+Interactive installer/manager with two sections:
+- `Telegram MTProto Proxy`
+- `Loopa Xray Configs`
+
+The Xray section supports these connection modes:
 - `VLESS + TCP + REALITY`
 - `VLESS + TCP + security=none` (no TLS)
 - `VLESS + WebSocket + security=none` (no TLS)
@@ -16,6 +20,7 @@ bash -c 'set -e; TMP_DIR="$(mktemp -d)"; curl -fsSL https://github.com/MrVoidLin
 Why this command: the installer is now modular and loads `lib/` and `features/`, so it must run from the project folder, not as a single raw script.
 
 ## What It Does
+- Splits the wizard into `Telegram Proxy` and `Loopa Configs`
 - Installs required packages (`curl`, `jq`, `openssl`, `qrencode`) if missing
 - Installs `xray` if missing
 - Ensures `/usr/local/etc/xray/config.json` has required structure
@@ -23,9 +28,32 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 - Restarts `xray` safely
 - Shows VLESS link + QR code
 - Saves config summary files
+- Can build and manage official `MTProxy` from Telegram's repository
 - Includes full uninstall cleanup flow
 
-## Menu
+## Main Menu
+1. Telegram Proxy (MTProto)
+2. Loopa Configs (Xray)
+3. Exit
+
+## Telegram Proxy Menu
+1. Install/Update MTProto proxy
+2. Show proxy link
+3. Rotate secret
+4. Set/Clear MTProxy tag
+5. Refresh Telegram upstream config
+6. Restart proxy
+7. Show status
+8. Remove proxy
+9. Back
+
+Important behavior:
+- The installer builds `MTProxy` from Telegram's official GitHub repository.
+- It downloads `proxy-secret` and `proxy-multi.conf` from `core.telegram.org`.
+- It stores the generated link in `~/loopa-mtproxy.txt`.
+- If you want Telegram-side channel promotion, register the proxy in `@MTProxybot` and set the returned tag.
+
+## Loopa Configs Menu
 1. Create new Reality inbound
 2. Create new VLESS TCP inbound (no TLS)
 3. Create new VLESS TCP 2-Hop (IRAN -> FOREIGN, no TLS)
@@ -37,7 +65,7 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 9. Firewall (ufw)
 10. Stats API (CPU/RAM/Load)
 11. Connection stats (IPs now / 10m / 1h / 24h)
-12. Exit
+12. Back
 13. Uninstall Loopa/Xray (full cleanup)
 
 ## Connection Stats Option

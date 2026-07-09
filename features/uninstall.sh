@@ -8,10 +8,12 @@ collect_loopa_artifact_files() {
     "$DATA_DIR"/loopa-vless-*.txt
     "$DATA_DIR"/loopa-vless*-client-*.json
     "$DATA_DIR"/loopa-foreign-setup-*.sh
+    "$DATA_DIR"/loopa-mtproxy.txt
     /root/loopa-reality-*.txt
     /root/loopa-vless-*.txt
     /root/loopa-vless*-client-*.json
     /root/loopa-foreign-setup-*.sh
+    /root/loopa-mtproxy.txt
   )
 
   for home_dir in /home/*; do
@@ -21,6 +23,7 @@ collect_loopa_artifact_files() {
       "$home_dir"/loopa-vless-*.txt
       "$home_dir"/loopa-vless*-client-*.json
       "$home_dir"/loopa-foreign-setup-*.sh
+      "$home_dir"/loopa-mtproxy.txt
     )
   done
 
@@ -60,11 +63,13 @@ stop_loopa_services() {
   systemctl disable --now "$STATS_SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl disable --now "$CONN_STATS_ROTATE_TIMER_NAME" >/dev/null 2>&1 || true
   systemctl disable --now "$CONN_STATS_ROTATE_SERVICE_NAME" >/dev/null 2>&1 || true
+  systemctl disable --now "$MTPROXY_SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl stop xray >/dev/null 2>&1 || true
   systemctl disable xray >/dev/null 2>&1 || true
   pkill -9 xray 2>/dev/null || true
   pkill -f "$STATS_SCRIPT" 2>/dev/null || true
   pkill -f "$CONN_STATS_SCRIPT" 2>/dev/null || true
+  pkill -f "$MTPROXY_BIN" 2>/dev/null || true
 }
 
 remove_ufw_rules_for_port() {
@@ -147,6 +152,10 @@ remove_loopa_system_paths() {
     "$CONN_STATS_ROTATE_TIMER"
     "$CONN_STATS_LOGROTATE_STATE"
     "/etc/systemd/system/timers.target.wants/${CONN_STATS_ROTATE_TIMER_NAME}"
+    "$MTPROXY_SERVICE"
+    "$MTPROXY_ENV_FILE"
+    "$MTPROXY_WORK_DIR"
+    "$MTPROXY_SRC_DIR"
   )
   local path
 
@@ -183,6 +192,7 @@ uninstall_loopa_xray() {
   echo " - Loopa-generated config files and client JSON files"
   echo " - Loopa Stats API service/script"
   echo " - Loopa connection stats script and hourly log rotation"
+  echo " - Telegram MTProto proxy service and files"
   echo " - Matching UFW rules for Loopa/Xray ports"
   echo
   read -rp "Type UNINSTALL to continue: " CONFIRM

@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/lib/core.sh"
 source "$SCRIPT_DIR/features/firewall.sh"
 source "$SCRIPT_DIR/features/stats_api.sh"
 source "$SCRIPT_DIR/features/connection_stats.sh"
+source "$SCRIPT_DIR/features/telegram_proxy.sh"
 source "$SCRIPT_DIR/features/config_manage.sh"
 source "$SCRIPT_DIR/features/reality.sh"
 source "$SCRIPT_DIR/features/vless_single.sh"
@@ -16,10 +17,10 @@ source "$SCRIPT_DIR/features/vless_ws_tls_fronted.sh"
 source "$SCRIPT_DIR/features/vless_2hop.sh"
 source "$SCRIPT_DIR/features/uninstall.sh"
 
-main_menu() {
+loopa_configs_menu() {
   while true; do
     clear
-    echo "Loopa Xray Wizard (v5.0)"
+    echo "Loopa Xray Wizard (v6.0)"
     echo "========================"
     echo "1) Create new Reality inbound"
     echo "2) Create new VLESS TCP inbound (no TLS)"
@@ -32,7 +33,7 @@ main_menu() {
     echo "9) Firewall (ufw)"
     echo "10) Stats API (CPU/RAM/Load)"
     echo "11) Connection stats (IPs now / 10m / 1h / 24h)"
-    echo "12) Exit"
+    echo "12) Back"
     echo "13) Uninstall Loopa/Xray (full cleanup)"
     read -rp "Select an option [1-13]: " CHOICE
 
@@ -48,8 +49,30 @@ main_menu() {
       9) firewall_menu ;;
       10) stats_api_menu ;;
       11) connection_stats_menu ;;
-      12) echo "Bye!"; exit 0 ;;
+      12) break ;;
       13) uninstall_loopa_xray ;;
+      *)
+        echo "Invalid option."
+        sleep 1
+        ;;
+    esac
+  done
+}
+
+main_menu() {
+  while true; do
+    clear
+    echo "Loopa Server Wizard (v6.0)"
+    echo "=========================="
+    echo "1) Telegram Proxy (MTProto)"
+    echo "2) Loopa Configs (Xray)"
+    echo "3) Exit"
+    read -rp "Select an option [1-3]: " CHOICE
+
+    case $CHOICE in
+      1) telegram_proxy_menu ;;
+      2) loopa_configs_menu ;;
+      3) echo "Bye!"; exit 0 ;;
       *)
         echo "Invalid option."
         sleep 1
