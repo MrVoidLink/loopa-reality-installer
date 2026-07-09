@@ -6,7 +6,8 @@ mtproxy_instance_slug_from_name() {
   local name="$1"
   local slug
 
-  slug=$(printf '%s' "$name" \
+  slug=$(LC_ALL=C printf '%s' "$name" \
+    | tr -cd 'A-Za-z0-9 _.-' \
     | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-{2,}/-/g')
 
@@ -41,6 +42,70 @@ mtproxy_list_instances() {
   for env_file in "${env_files[@]}"; do
     basename "$env_file" .env
   done | sort
+}
+
+mtproxy_normalize_instances() {
+  local env_files=()
+  local env_file
+  local old_slug
+  local desired_slug
+  local old_service_file
+  local new_service_file
+  local old_info_file
+  local new_info_file
+  local renamed=0
+
+  mtproxy_ensure_runtime_dirs
+  shopt -s nullglob
+  env_files=("$MTPROXY_ENV_DIR"/*.env)
+  shopt -u nullglob
+
+  for env_file in "${env_files[@]}"; do
+    old_slug=$(basename "$env_file" .env)
+    if ! mtproxy_load_env "$old_slug"; then
+      continue
+    fi
+
+    desired_slug=$(mtproxy_instance_slug_from_name "${MTPROXY_INSTANCE_NAME:-$old_slug}")
+    desired_slug=${desired_slug:-$old_slug}
+    if [ "$desired_slug" = "$old_slug" ]; then
+      continue
+    fi
+    if [ -f "$(mtproxy_instance_env_file "$desired_slug")" ]; then
+      continue
+    fi
+
+    old_service_file=$(mtproxy_instance_service_file "$old_slug")
+    new_service_file=$(mtproxy_instance_service_file "$desired_slug")
+    old_info_file=$(mtproxy_instance_info_file "$old_slug")
+    new_info_file=$(mtproxy_instance_info_file "$desired_slug")
+
+    if [ -f "$old_service_file" ]; then
+      systemctl disable --now "$(mtproxy_instance_service_name "$old_slug")" >/dev/null 2>&1 || true
+      mv "$old_service_file" "$new_service_file"
+    fi
+    mtproxy_write_env \
+      "$desired_slug" \
+      "$desired_slug" \
+      "$MTPROXY_PUBLIC_HOST" \
+      "$MTPROXY_PORT" \
+      "$MTPROXY_LOCAL_PORT" \
+      "${MTPROXY_WORKERS:-1}" \
+      "$MTPROXY_SECRET" \
+      "${MTPROXY_TAG:-}" \
+      "$MTPROXY_PADDING_MODE"
+    rm -f "$env_file"
+    if [ -f "$old_info_file" ]; then
+      mv "$old_info_file" "$new_info_file"
+    fi
+    mtproxy_write_service "$desired_slug"
+    mtproxy_write_summary "$desired_slug" >/dev/null 2>&1 || true
+    renamed=1
+  done
+
+  if [ "$renamed" -eq 1 ]; then
+    systemctl daemon-reload
+  fi
 }
 
 mtproxy_instance_count() {
@@ -88,11 +153,16 @@ mtproxy_load_env() {
 
   MTPROXY_INSTANCE_SLUG="$slug"
   MTPROXY_INSTANCE_NAME=${MTPROXY_INSTANCE_NAME:-$slug}
+  MTPROXY_INSTANCE_NAME=$(mtproxy_instance_slug_from_name "$MTPROXY_INSTANCE_NAME")
+  MTPROXY_INSTANCE_NAME=${MTPROXY_INSTANCE_NAME:-$slug}
   if [[ "${MTPROXY_SECRET:-}" == dd* ]] && [ ${#MTPROXY_SECRET} -eq 34 ]; then
     MTPROXY_PADDING_MODE="${MTPROXY_PADDING_MODE:-Y}"
     MTPROXY_SECRET="${MTPROXY_SECRET:2}"
   fi
-  MTPROXY_PADDING_MODE=${MTPROXY_PADDING_MODE:-Y}
+  case "${MTPROXY_PADDING_MODE:-Y}" in
+    [Nn]) MTPROXY_PADDING_MODE="N" ;;
+    *) MTPROXY_PADDING_MODE="Y" ;;
+  esac
 }
 
 mtproxy_write_env() {
@@ -402,6 +472,7 @@ mtproxy_select_instance() {
   local slug
 
   mtproxy_migrate_legacy_instance
+  mtproxy_normalize_instances
   mapfile -t instances < <(mtproxy_list_instances)
   if [ ${#instances[@]} -eq 0 ]; then
     echo "No MTProto proxies installed yet."
@@ -448,6 +519,7 @@ mtproxy_create_instance() {
   local default_name
 
   mtproxy_migrate_legacy_instance
+  mtproxy_normalize_instances
   detected_host=$(detect_public_ip || true)
   default_name=$(mtproxy_default_instance_name)
 
@@ -459,6 +531,7 @@ mtproxy_create_instance() {
   read -rp "Instance name [$default_name]: " instance_name
   instance_name=${instance_name:-$default_name}
   slug=$(mtproxy_instance_slug_from_name "$instance_name")
+  instance_name="$slug"
   [ -f "$(mtproxy_instance_env_file "$slug")" ] && err "Instance '$slug' already exists."
 
   if [ -n "$detected_host" ]; then
@@ -741,6 +814,7 @@ telegram_proxy_menu() {
   while true; do
     clear
     mtproxy_migrate_legacy_instance
+    mtproxy_normalize_instances
     echo "Telegram Proxy"
     echo "=============="
     echo "Status: $(mtproxy_overview_status)"
