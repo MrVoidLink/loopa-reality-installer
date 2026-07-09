@@ -475,21 +475,21 @@ mtproxy_select_instance() {
   mtproxy_normalize_instances
   mapfile -t instances < <(mtproxy_list_instances)
   if [ ${#instances[@]} -eq 0 ]; then
-    echo "No MTProto proxies installed yet."
+    echo "No MTProto proxies installed yet." >&2
     read -rp "Press Enter to return..." _
     return 1
   fi
 
   while true; do
-    clear
-    echo "$prompt"
-    echo "=============================="
+    clear >&2
+    echo "$prompt" >&2
+    echo "==============================" >&2
     for index in "${!instances[@]}"; do
       slug="${instances[$index]}"
       mtproxy_load_env "$slug" >/dev/null || continue
-      echo "$((index + 1))) $MTPROXY_INSTANCE_NAME [$slug] - port $MTPROXY_PORT - $(mtproxy_status "$slug")"
+      echo "$((index + 1))) $MTPROXY_INSTANCE_NAME [$slug] - port $MTPROXY_PORT - $(mtproxy_status "$slug")" >&2
     done
-    echo "0) Cancel"
+    echo "0) Cancel" >&2
     read -rp "Choose [0-${#instances[@]}]: " choice
 
     if [ "$choice" = "0" ]; then
@@ -500,7 +500,7 @@ mtproxy_select_instance() {
       return 0
     fi
 
-    echo "Invalid choice."
+    echo "Invalid choice." >&2
     sleep 1
   done
 }
