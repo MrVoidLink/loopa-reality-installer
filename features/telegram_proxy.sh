@@ -66,6 +66,15 @@ mtproxy_patch_makefile() {
   fi
 }
 
+mtproxy_patch_source() {
+  local pid_file="$MTPROXY_SRC_DIR/common/pid.c"
+  [ -f "$pid_file" ] || err "MTProxy pid.c not found."
+
+  if grep -q "assert (!(p & 0xffff0000));" "$pid_file"; then
+    perl -0pi -e 's/int p = getpid \(\);\s+assert \(!\(p & 0xffff0000\)\);\s+PID\.pid = p;/int p = getpid ();\n    PID.pid = (unsigned short) p;/g' "$pid_file"
+  fi
+}
+
 mtproxy_ensure_build_deps() {
   local required=(git curl build-essential libssl-dev zlib1g-dev openssl qrencode)
   local pkg
@@ -94,6 +103,7 @@ mtproxy_build_binary() {
   fi
 
   mtproxy_patch_makefile
+  mtproxy_patch_source
   make -C "$MTPROXY_SRC_DIR" clean >/dev/null 2>&1 || true
   make -C "$MTPROXY_SRC_DIR"
 
