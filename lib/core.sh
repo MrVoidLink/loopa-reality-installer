@@ -25,10 +25,13 @@ MTPROXY_WORK_DIR="/opt/MTProxy"
 MTPROXY_BIN="$MTPROXY_WORK_DIR/mtproto-proxy"
 MTPROXY_SECRET_FILE="$MTPROXY_WORK_DIR/proxy-secret"
 MTPROXY_CONFIG_FILE="$MTPROXY_WORK_DIR/proxy-multi.conf"
-MTPROXY_ENV_FILE="/etc/loopa-mtproxy.env"
-MTPROXY_SERVICE="/etc/systemd/system/loopa-mtproxy.service"
-MTPROXY_SERVICE_NAME="loopa-mtproxy"
-MTPROXY_INFO_FILE="$DATA_DIR/loopa-mtproxy.txt"
+MTPROXY_ENV_DIR="/etc/loopa-mtproxy"
+MTPROXY_SERVICE_PREFIX="loopa-mtproxy"
+MTPROXY_INFO_PREFIX="$DATA_DIR/loopa-mtproxy"
+MTPROXY_LEGACY_ENV_FILE="/etc/loopa-mtproxy.env"
+MTPROXY_LEGACY_SERVICE="/etc/systemd/system/loopa-mtproxy.service"
+MTPROXY_LEGACY_SERVICE_NAME="loopa-mtproxy"
+MTPROXY_LEGACY_INFO_FILE="$DATA_DIR/loopa-mtproxy.txt"
 
 err() { echo "ERROR: $*" >&2; exit 1; }
 has() { command -v "$1" >/dev/null 2>&1; }

@@ -8,12 +8,12 @@ collect_loopa_artifact_files() {
     "$DATA_DIR"/loopa-vless-*.txt
     "$DATA_DIR"/loopa-vless*-client-*.json
     "$DATA_DIR"/loopa-foreign-setup-*.sh
-    "$DATA_DIR"/loopa-mtproxy.txt
+    "$DATA_DIR"/loopa-mtproxy*.txt
     /root/loopa-reality-*.txt
     /root/loopa-vless-*.txt
     /root/loopa-vless*-client-*.json
     /root/loopa-foreign-setup-*.sh
-    /root/loopa-mtproxy.txt
+    /root/loopa-mtproxy*.txt
   )
 
   for home_dir in /home/*; do
@@ -23,7 +23,7 @@ collect_loopa_artifact_files() {
       "$home_dir"/loopa-vless-*.txt
       "$home_dir"/loopa-vless*-client-*.json
       "$home_dir"/loopa-foreign-setup-*.sh
-      "$home_dir"/loopa-mtproxy.txt
+      "$home_dir"/loopa-mtproxy*.txt
     )
   done
 
@@ -49,6 +49,22 @@ collect_stats_port() {
   fi
 }
 
+collect_mtproxy_public_ports() {
+  local files=()
+
+  shopt -s nullglob
+  files=("$MTPROXY_ENV_DIR"/*.env)
+  shopt -u nullglob
+  if [ -f "$MTPROXY_LEGACY_ENV_FILE" ]; then
+    files+=("$MTPROXY_LEGACY_ENV_FILE")
+  fi
+  if [ ${#files[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  awk -F"'" '/^MTPROXY_PORT=/ {print $2}' "${files[@]}" | awk '/^[0-9]+$/' | sort -n -u
+}
+
 collect_xray_config_ports() {
   if ! has jq; then
     return 0
@@ -60,10 +76,17 @@ collect_xray_config_ports() {
 }
 
 stop_loopa_services() {
+  local mtproxy_services=()
+  local service_name
+  mapfile -t mtproxy_services < <(systemctl list-unit-files --type=service --no-legend "${MTPROXY_SERVICE_PREFIX}*.service" 2>/dev/null | awk '{print $1}')
+
   systemctl disable --now "$STATS_SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl disable --now "$CONN_STATS_ROTATE_TIMER_NAME" >/dev/null 2>&1 || true
   systemctl disable --now "$CONN_STATS_ROTATE_SERVICE_NAME" >/dev/null 2>&1 || true
-  systemctl disable --now "$MTPROXY_SERVICE_NAME" >/dev/null 2>&1 || true
+  for service_name in "${mtproxy_services[@]}"; do
+    systemctl disable --now "$service_name" >/dev/null 2>&1 || true
+  done
+  systemctl disable --now "$MTPROXY_LEGACY_SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl stop xray >/dev/null 2>&1 || true
   systemctl disable xray >/dev/null 2>&1 || true
   pkill -9 xray 2>/dev/null || true
@@ -99,6 +122,7 @@ remove_ufw_rules_for_port() {
 cleanup_loopa_ufw_rules() {
   local ports=()
   local XRAY_PORTS=()
+  local MTPROXY_PORTS=()
   local stats_port
   local port
 
@@ -111,8 +135,12 @@ cleanup_loopa_ufw_rules() {
 
   mapfile -t ports < <(collect_loopa_inbound_ports)
   mapfile -t XRAY_PORTS < <(collect_xray_config_ports)
+  mapfile -t MTPROXY_PORTS < <(collect_mtproxy_public_ports)
   if [ ${#XRAY_PORTS[@]} -gt 0 ]; then
     ports+=("${XRAY_PORTS[@]}")
+  fi
+  if [ ${#MTPROXY_PORTS[@]} -gt 0 ]; then
+    ports+=("${MTPROXY_PORTS[@]}")
   fi
   stats_port=$(collect_stats_port || true)
   if [[ "${stats_port:-}" =~ ^[0-9]+$ ]]; then
@@ -152,16 +180,24 @@ remove_loopa_system_paths() {
     "$CONN_STATS_ROTATE_TIMER"
     "$CONN_STATS_LOGROTATE_STATE"
     "/etc/systemd/system/timers.target.wants/${CONN_STATS_ROTATE_TIMER_NAME}"
-    "$MTPROXY_SERVICE"
-    "$MTPROXY_ENV_FILE"
     "$MTPROXY_WORK_DIR"
     "$MTPROXY_SRC_DIR"
+    "$MTPROXY_ENV_DIR"
+    "$MTPROXY_LEGACY_ENV_FILE"
+    "$MTPROXY_LEGACY_SERVICE"
   )
   local path
+  local extra_path
 
   for path in "${to_remove[@]}"; do
     if [ -e "$path" ]; then
       rm -rf "$path" || true
+    fi
+  done
+
+  for extra_path in /etc/systemd/system/${MTPROXY_SERVICE_PREFIX}*.service /etc/systemd/system/multi-user.target.wants/${MTPROXY_SERVICE_PREFIX}*.service; do
+    if [ -e "$extra_path" ]; then
+      rm -rf "$extra_path" || true
     fi
   done
 }

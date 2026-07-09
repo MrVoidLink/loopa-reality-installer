@@ -29,6 +29,7 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 - Shows VLESS link + QR code
 - Saves config summary files
 - Can build and manage official `MTProxy` from Telegram's repository
+- Supports multiple independent Telegram proxies on the same server
 - Includes full uninstall cleanup flow
 
 ## Main Menu
@@ -37,20 +38,22 @@ Why this command: the installer is now modular and loads `lib/` and `features/`,
 3. Exit
 
 ## Telegram Proxy Menu
-1. Install/Update MTProto proxy
+1. Create new MTProto proxy
 2. Show proxy link
 3. Rotate secret
 4. Set/Clear MTProxy tag
-5. Refresh Telegram upstream config
+5. Refresh Telegram upstream config (restart all)
 6. Restart proxy
 7. Show status
-8. Remove proxy
-9. Back
+8. List proxies
+9. Remove proxy
+10. Back
 
 Important behavior:
 - The installer builds `MTProxy` from Telegram's official GitHub repository.
 - It downloads `proxy-secret` and `proxy-multi.conf` from `core.telegram.org`.
-- It stores the generated link in `~/loopa-mtproxy.txt`.
+- Each proxy instance gets its own systemd service and summary file such as `~/loopa-mtproxy-proxy-1.txt`.
+- The compiled MTProxy binary and Telegram upstream files are shared across instances.
 - If you want Telegram-side channel promotion, register the proxy in `@MTProxybot` and set the returned tag.
 
 ## Loopa Configs Menu
