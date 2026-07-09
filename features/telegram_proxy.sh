@@ -8,6 +8,20 @@ mtproxy_load_env() {
   fi
   # shellcheck disable=SC1090
   source "$MTPROXY_ENV_FILE"
+  if [[ "${MTPROXY_SECRET:-}" == dd* ]] && [ ${#MTPROXY_SECRET} -eq 34 ]; then
+    MTPROXY_PADDING_MODE="${MTPROXY_PADDING_MODE:-Y}"
+    MTPROXY_SECRET="${MTPROXY_SECRET:2}"
+  fi
+  MTPROXY_PADDING_MODE=${MTPROXY_PADDING_MODE:-Y}
+}
+
+mtproxy_client_secret() {
+  mtproxy_load_env || return 1
+  if [[ "${MTPROXY_PADDING_MODE:-Y}" =~ ^[Nn]$ ]]; then
+    printf '%s\n' "$MTPROXY_SECRET"
+    return 0
+  fi
+  printf 'dd%s\n' "$MTPROXY_SECRET"
 }
 
 mtproxy_status() {
@@ -29,6 +43,7 @@ mtproxy_write_env() {
   local workers="$4"
   local secret="$5"
   local tag="$6"
+  local padding_mode="$7"
 
   cat > "$MTPROXY_ENV_FILE" <<EOF
 MTPROXY_PUBLIC_HOST='$public_host'
@@ -37,6 +52,7 @@ MTPROXY_LOCAL_PORT='$local_port'
 MTPROXY_WORKERS='$workers'
 MTPROXY_SECRET='$secret'
 MTPROXY_TAG='$tag'
+MTPROXY_PADDING_MODE='$padding_mode'
 EOF
 }
 
@@ -86,15 +102,7 @@ mtproxy_build_binary() {
 }
 
 mtproxy_generate_secret() {
-  local padding_mode="$1"
-  local base_secret
-
-  base_secret=$(openssl rand -hex 16)
-  if [[ "$padding_mode" =~ ^[Nn]$ ]]; then
-    printf '%s\n' "$base_secret"
-    return 0
-  fi
-  printf 'dd%s\n' "$base_secret"
+  openssl rand -hex 16
 }
 
 mtproxy_write_service() {
@@ -125,6 +133,8 @@ EOF
 
 mtproxy_write_summary() {
   mtproxy_load_env || err "MTProxy config not found."
+  local client_secret
+  client_secret=$(mtproxy_client_secret)
 
   cat > "$MTPROXY_INFO_FILE" <<EOF
 Loopa Telegram Proxy
@@ -134,11 +144,12 @@ Public Port: $MTPROXY_PORT
 Local Stats Port: $MTPROXY_LOCAL_PORT
 Workers: $MTPROXY_WORKERS
 Secret: $MTPROXY_SECRET
+Client Secret: $client_secret
 Tag: ${MTPROXY_TAG:-none}
 Status: $(mtproxy_status)
 
-tg://proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$MTPROXY_SECRET
-https://t.me/proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$MTPROXY_SECRET
+tg://proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$client_secret
+https://t.me/proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$client_secret
 EOF
 }
 
@@ -169,6 +180,7 @@ mtproxy_install_or_update() {
   local workers
   local host_prompt
   local padding_mode
+  local current_padding_mode=""
   local secret_action
   local tag
   local secret
@@ -181,6 +193,7 @@ mtproxy_install_or_update() {
     current_workers="${MTPROXY_WORKERS:-}"
     current_tag="${MTPROXY_TAG:-}"
     current_secret="${MTPROXY_SECRET:-}"
+    current_padding_mode="${MTPROXY_PADDING_MODE:-Y}"
   fi
 
   detected_host=$(detect_public_ip || true)
@@ -223,6 +236,8 @@ mtproxy_install_or_update() {
   [[ "$workers" =~ ^[0-9]+$ ]] || err "Worker count must be numeric."
   (( workers >= 1 )) || err "Worker count must be at least 1."
 
+  read -rp "Enable random padding? [${current_padding_mode:-Y}/n]: " padding_mode
+  padding_mode=${padding_mode:-${current_padding_mode:-Y}}
   read -rp "Proxy tag from @MTProxybot (optional) [${current_tag:-none}]: " tag
   if [ -z "$tag" ]; then
     tag="$current_tag"
@@ -231,14 +246,12 @@ mtproxy_install_or_update() {
   if [ -n "$current_secret" ]; then
     read -rp "Generate a new client secret now? [y/N]: " secret_action
     if [[ "$secret_action" =~ ^[Yy]$ ]]; then
-      read -rp "Enable random padding? [Y/n]: " padding_mode
-      secret=$(mtproxy_generate_secret "$padding_mode")
+      secret=$(mtproxy_generate_secret)
     else
       secret="$current_secret"
     fi
   else
-    read -rp "Enable random padding? [Y/n]: " padding_mode
-    secret=$(mtproxy_generate_secret "$padding_mode")
+    secret=$(mtproxy_generate_secret)
   fi
 
   echo
@@ -246,7 +259,7 @@ mtproxy_install_or_update() {
   mtproxy_ensure_build_deps
   mtproxy_build_binary
   mtproxy_refresh_upstream_files
-  mtproxy_write_env "$public_host" "$public_port" "$local_port" "$workers" "$secret" "$tag"
+  mtproxy_write_env "$public_host" "$public_port" "$local_port" "$workers" "$secret" "$tag" "$padding_mode"
   mtproxy_write_service
   systemctl daemon-reload
   systemctl enable "$MTPROXY_SERVICE_NAME"
@@ -269,8 +282,10 @@ mtproxy_show_links() {
 
   local tg_link
   local https_link
-  tg_link="tg://proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$MTPROXY_SECRET"
-  https_link="https://t.me/proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$MTPROXY_SECRET"
+  local client_secret
+  client_secret=$(mtproxy_client_secret)
+  tg_link="tg://proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$client_secret"
+  https_link="https://t.me/proxy?server=$MTPROXY_PUBLIC_HOST&port=$MTPROXY_PORT&secret=$client_secret"
 
   clear
   echo "Telegram Proxy Links"
@@ -279,6 +294,7 @@ mtproxy_show_links() {
   echo "Host: $MTPROXY_PUBLIC_HOST"
   echo "Port: $MTPROXY_PORT"
   echo "Secret: $MTPROXY_SECRET"
+  echo "Client Secret: $client_secret"
   echo "Tag: ${MTPROXY_TAG:-none}"
   echo
   echo "$tg_link"
@@ -322,9 +338,9 @@ mtproxy_rotate_secret() {
   echo "====================="
   echo "Old links will stop working after restart."
   read -rp "Enable random padding for the new secret? [Y/n]: " padding_mode
-  new_secret=$(mtproxy_generate_secret "$padding_mode")
+  new_secret=$(mtproxy_generate_secret)
 
-  mtproxy_write_env "$MTPROXY_PUBLIC_HOST" "$MTPROXY_PORT" "$MTPROXY_LOCAL_PORT" "$MTPROXY_WORKERS" "$new_secret" "${MTPROXY_TAG:-}"
+  mtproxy_write_env "$MTPROXY_PUBLIC_HOST" "$MTPROXY_PORT" "$MTPROXY_LOCAL_PORT" "$MTPROXY_WORKERS" "$new_secret" "${MTPROXY_TAG:-}" "$padding_mode"
   mtproxy_write_service
   systemctl daemon-reload
   mtproxy_refresh_upstream_files
@@ -346,7 +362,7 @@ mtproxy_set_tag() {
   echo "Get the tag from @MTProxybot if you want Telegram-side promotion."
   read -rp "Proxy tag (leave empty to clear) [${MTPROXY_TAG:-none}]: " new_tag
 
-  mtproxy_write_env "$MTPROXY_PUBLIC_HOST" "$MTPROXY_PORT" "$MTPROXY_LOCAL_PORT" "$MTPROXY_WORKERS" "$MTPROXY_SECRET" "$new_tag"
+  mtproxy_write_env "$MTPROXY_PUBLIC_HOST" "$MTPROXY_PORT" "$MTPROXY_LOCAL_PORT" "$MTPROXY_WORKERS" "$MTPROXY_SECRET" "$new_tag" "${MTPROXY_PADDING_MODE:-Y}"
   mtproxy_write_service
   systemctl daemon-reload
   systemctl restart "$MTPROXY_SERVICE_NAME"
